@@ -39,7 +39,7 @@ This allows messages to be byte compared.
 | Integer   | `-?[0-9]+`                                   | `%d` or `%u` |
 | Float     | `(-?0x1(\.[0-9a-f]+)?p[+-][0-9]+|nan|-?inf)` | `%a`         |
 | String    | `[0-9]+:.*`                                  | `%d:%s`      |
-| Bytes     | `[0-9]+|.*`                                  | `%d|%.*s`    |
+| Bytes     | `[0-9]+;.*`                                  | `%d;%.*s`    |
 | Reference | `[0-9]+@`                                    | `%zu@`       |
 
 # Integers

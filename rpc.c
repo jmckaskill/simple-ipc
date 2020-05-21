@@ -1,4 +1,5 @@
 #define _GNU_SOURCE
+#include "rpc.h"
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -6,19 +7,16 @@
 #include <string.h>
 #include <math.h>
 #include <stdarg.h>
+#include <assert.h>
 
-struct parser {
-	const char *next;
-	const char *end;
-};
-
-static int parse_dec_int(const char **p, int negate, int *pv)
+static int parse_dec_uint(const char **pp, unsigned *pv)
 {
-	char ch = **p;
-	if (!negate && ch == '0') {
+	const char *p = *pp;
+	char ch = *p;
+	if (ch == '0') {
 		// leading zeros are not supported so this can only be '0'
 		*pv = 0;
-		(*p)++;
+		*pp = p + 1;
 		return 0;
 	} else if (ch < '1' || ch > '9') {
 		return -1;
@@ -27,63 +25,134 @@ static int parse_dec_int(const char **p, int negate, int *pv)
 	unsigned u = 0;
 	do {
 		u = (u * 10) + (ch - '0');
-		if (u - negate < 0) {
-			// overflow
-			// u can not be 0 as the lone 0 is handled above
-			// if u < 0, then u is greater than INT_MAX
-			// if u - 1 < 0 then u is greater than -INT_MIN
+		if (u < 0) {
+			// protect against + (ch - '0') causing overflow
+			// the < UINT_MAX / 10 below protects (u * 10)
 			return -1;
 		}
-		ch = *(++(*p));
-	} while ('0' <= ch && ch <= '9' && u < INT_MAX / 10);
+		ch = *(++p);
+	} while ('0' <= ch && ch <= '9' && u < UINT_MAX / 10);
 
+	*pv = u;
+	*pp = p;
+	return 0;
+}
+
+static int parse_dec_uint64(const char **pp, uint64_t *pv)
+{
+	const char *p = *pp;
+	char ch = *p;
+	if (ch == '0') {
+		// leading zeros are not supported so this can only be '0'
+		*pv = 0;
+		*pp = p + 1;
+		return 0;
+	} else if (ch < '1' || ch > '9') {
+		return -1;
+	}
+
+	uint64_t u = 0;
+	do {
+		u = (u * 10) + (ch - '0');
+		if (u < 0) {
+			return -1;
+		}
+		ch = *(++p);
+	} while ('0' <= ch && ch <= '9' && u < UINT64_MAX / 10);
+
+	*pv = u;
+	*pp = p;
+	return 0;
+}
+
+int srpc_parse_int(srpc_parser *p, int *pv)
+{
+	int negate = (*p->next == '-');
+	p->next += negate;
+
+	unsigned u;
+	if (parse_dec_uint(&p->next, &u)) {
+		return -1;
+	}
+	if (*(p->next++) != ' ' || (int)(u - negate) < 0) {
+		return -1;
+	}
 	*pv = (1 - 2 * negate) * (int)u;
 	return 0;
 }
 
-static int parse_int(const char **p, int *pv)
+int srpc_parse_uint(srpc_parser *p, unsigned *pv)
 {
-	int negate = (**p == '-');
-	*p += negate;
-
-	return parse_dec_int(p, negate, pv) || *((*p)++) != ' ';
+	return parse_dec_uint(&p->next, pv) || *(p->next++) != ' ';
 }
 
-static const int8_t hex_lookup[] = {
-	0,  1,	2,  3,	4,  5,	6,  7, // 30-37
-	8,  9,	-1, -1, -1, -1, -1, -1, // 38-4F
-	-1, -1, -1, -1, -1, -1, -1, -1, // 40-47
-	-1, -1, -1, -1, -1, -1, -1, -1, // 48-4F
-	-1, -1, -1, -1, -1, -1, -1, -1, // 50-57
-	-1, -1, -1, -1, -1, -1, -1, -1, // 58-5F
-	-1, 10, 11, 12, 13, 14, 15, -1, // 60-67
-};
-
-static int parse_uint64(const char **p, uint64_t *pv)
+int srpc_parse_int64(srpc_parser *p, int64_t *pv)
 {
-	// use -1 to ensure we get at least one character
-	unsigned count = (unsigned)-1;
-	uint64_t v = 0;
+	int negate = (*p->next == '-');
+	p->next += negate;
 
-	// strip 0x prefix
-	if (*((*p)++) != '0' || *((*p)++) != 'x') {
+	uint64_t u;
+	if (parse_dec_uint64(&p->next, &u)) {
 		return -1;
 	}
-
-	for (;;) {
-		unsigned char ch = **p;
-		ch -= 0x30;
-		if (ch >= sizeof(hex_lookup) || hex_lookup[ch] < 0) {
-			if (count >= (sizeof(uint64_t) * 2)) {
-				return -1;
-			}
-			*pv = v;
-			return *((*p)++) != ' ';
-		}
-		v = (v << 4) + hex_lookup[ch];
-		(*p)++;
-		count++;
+	if (*(p->next++) != ' ' || (int64_t)(u - negate) < 0) {
+		return -1;
 	}
+	*pv = (1 - 2 * negate) * (int64_t)u;
+	return 0;
+}
+
+int srpc_parse_uint64(srpc_parser *p, uint64_t *pv)
+{
+	return parse_dec_uint64(&p->next, pv) || *(p->next++) != ' ';
+}
+
+int srpc_reference(srpc_parser *p, uintptr_t *pv)
+{
+#if UINTPTR_MAX > UINT_MAX
+	uint64_t u64;
+	int err = parse_dec_uint64(&p->next, &u64);
+	*pv = (uintptr_t)u64;
+#else
+	unsigned u;
+	int err = parse_dec_uint(&p->next, &u);
+	*pv = (uintptr_t)u;
+#endif
+	return err || (*p->next++) != '@' || (*p->next++) != ' ';
+}
+
+static const uint8_t hex_lookup[] = {
+	0x00, 0x00, 0x00, 0x00, // Valid 00-1F
+	0x00, 0x00, 0xFF, 0x03, // Valid 20-3F
+	0x00, 0x00, 0x00, 0x00, // Valid 40-5F, Lookup 00-07 (not used)
+	0x7E, 0x00, 0x00, 0x00, // Valid 60-7F, Lookup 08-0F (not used)
+	0x00, 0x00, 0x00, 0x00, // Valid 80-9F, Lookup 10-17 (not used)
+	0x00, 0x00, 0x00, 0x00, // Valid A0-BF, Lookup 18-1F (not used)
+	0x00, 0x00, 0x00, 0x00, // Valid C0-DF, Lookup 20-27 (not used)
+	0x00, 0x00, 0x00, 0x00, // Valid E0-FF, Lookup 28-2F (not used)
+	0x10, 0x32, 0x54, 0x76, // Valid not used, Lookup 30-37
+	0x98, 0x00, 0x00, 0x00, // Valid not used, Lookup 38-3f (not used)
+	0x00, 0x00, 0x00, 0x00, // Valid not used, Lookup 40-47 (not used)
+	0x00, 0x00, 0x00, 0x00, // Valid not used, Lookup 48-4F (not used)
+	0x00, 0x00, 0x00, 0x00, // Valid not used, Lookup 50-57 (not used)
+	0x00, 0x00, 0x00, 0x00, // Valid not used, Lookup 58-5f (not used)
+	0xa0, 0xcb, 0xed, 0x0f, // Valid not used, Lookup 60-67
+};
+
+static inline int is_valid_hex(char ch)
+{
+	// Top 5 bits indicates index. Bottom 3 bits indicates
+	// which bit within that to use.
+	unsigned char uch = (unsigned char)ch;
+	return hex_lookup[uch >> 3] & (1 << (uch & 7));
+}
+
+static inline int hex_value(char ch)
+{
+	// Top 7 bits indicates index. Botom bit indicates which
+	// nibble within the lookup to use. Character has already
+	// been verified to be a valid hex byte.
+	return (hex_lookup[8+(ch >> 1)] >> ((ch & 1) << 2)) & 15;
 }
 
 static int parse_hex_float(const char **p, int negate, uint64_t *pfrac,
@@ -116,14 +185,13 @@ static int parse_hex_float(const char **p, int negate, uint64_t *pfrac,
 		uint64_t v = 0;
 		unsigned shift = 64;
 		do {
-			unsigned char ch = **p;
-			ch -= 0x30;
-			if (ch >= sizeof(hex_lookup) || hex_lookup[ch] < 0) {
+			char ch = **p;
+			if (!is_valid_hex(ch)) {
 				break;
 			}
 			(*p)++;
 			shift -= 4;
-			v |= ((uint64_t)hex_lookup[ch] << shift);
+			v |= ((uint64_t)hex_value(ch) << shift);
 		} while (shift);
 		*pfracbits = 64 - shift;
 		*pfrac = v;
@@ -145,8 +213,16 @@ static int parse_hex_float(const char **p, int negate, uint64_t *pfrac,
 		return -1;
 	}
 
-	// Unpack the exponent and trailing space
-	return parse_dec_int(p, expnegate, pexp) || *((*p)++) != ' ';
+	// Unpack the exponent
+	unsigned uexp;
+	if (parse_dec_uint(p, &uexp) || *((*p)++) != ' ') {
+		return -1;
+	}
+	if ((int)(uexp - expnegate) < 0) {
+		return -1; // overflow on conversion to int
+	}
+	*pexp = (1 - 2 * expnegate) * (int)uexp;
+	return 0;
 }
 
 static int parse_float32(const char **p, float *pv)
@@ -208,6 +284,11 @@ static int parse_float32(const char **p, float *pv)
 	return 0;
 }
 
+int srpc_float32(srpc_parser *p, float *pv)
+{
+	return parse_float32(&p->next, pv);
+}
+
 static int parse_float64(const char **p, int negate, double *pv)
 {
 	unsigned fracbits;
@@ -264,90 +345,49 @@ static int parse_float64(const char **p, int negate, double *pv)
 	return 0;
 }
 
-static int parse_word(const char **p, const char **pv)
+int srpc_float64(srpc_parser *p, double *pv)
 {
-	*pv = *p;
-	if (**p < 'a' || **p > 'z') {
-		return -1;
-	}
-	(*p)++;
-	while (('a' <= **p && **p <= 'z') || **p == '-') {
-		(*p)++;
-	}
-	return *(*p)++ != ' ';
+	int negate = (*p->next == '-');
+	p->next += negate;
+	return parse_float64(&p->next, negate, pv);
 }
 
-static int parse_szstring(struct parser *p, char delim, int *psz,
-			  const char **pv)
+static int parse_szstring(srpc_parser *p, char delim, int *psz, const char **pv)
 {
-	int sz;
-	if (parse_dec_int(&p->next, 0, &sz)) {
+	unsigned sz;
+	if (parse_dec_uint(&p->next, &sz)) {
 		return -1;
 	}
-	if (*(p->next++) != delim || sz >= (p->end - p->next)) {
+	if ((int)sz < 0 || *(p->next++) != delim || sz >= (p->end - p->next)) {
 		return -1;
 	}
-	*psz = sz;
+	*psz = (int)sz;
 	*pv = p->next;
 	p->next += sz;
 	return *(p->next++) != ' ';
 }
 
-static int parse_string(struct parser *p, int *psz, const char **pv)
+int srpc_string(srpc_parser *p, int *pn, const char **ps)
 {
-	return parse_szstring(p, ':', psz, pv);
+	return parse_szstring(p, ':', pn, ps);
 }
 
-static int parse_bytes(struct parser *p, int *psz, const unsigned char **pv)
+int srpc_bytes(srpc_parser *p, int *pn, const unsigned char **pp)
 {
-	return parse_szstring(p, '|', psz, (const char **)pv);
+	return parse_szstring(p, ';', pn, (const char **)pp);
 }
 
-static inline int is_word(const char *word, const char *test)
-{
-	return !strncmp(word, test, strlen(test));
-}
-
-enum any_type {
-	ANY_EOL,
-	ANY_INT,
-	ANY_UINT64,
-	ANY_DOUBLE,
-	ANY_WORD,
-	ANY_STRING,
-	ANY_BYTES,
-	ANY_REFERENCE,
-	ANY_ARRAY,
-	ANY_MAP,
-};
-
-struct any {
-	union {
-		int i;
-		uint64_t u;
-		double d;
-		struct {
-			int n;
-			const char *s;
-		} string;
-		struct {
-			int n;
-			const unsigned char *p;
-		} bytes;
-		struct parser array, map;
-	} value;
-	enum any_type type;
-};
-
-static int do_parse_any(struct parser *p, struct any *pv, int *pdepth)
+int srpc_next(srpc_parser *p, struct srpc_any *pv)
 {
 	int negate = 0;
+	uint64_t num;
 
 test_char:
 	switch (*p->next) {
 	case '\n':
 		p->next++;
-		pv->type = ANY_EOL;
+	case '\0':
+		pv->type = SRPC_END;
 		return 0;
 
 	case '-':
@@ -359,89 +399,113 @@ test_char:
 		negate = 1;
 		goto test_char;
 
-	case '[':
 	case '{':
-		p->next++;
-		(*pdepth)++;
-		return *(p->next++) != ' ';
-
-	case ']':
+		pv->type = SRPC_MAP;
+		goto consume_space;
+	case '[':
+		pv->type = SRPC_ARRAY;
+		goto consume_space;
 	case '}':
+		pv->type = SRPC_END;
+		goto consume_space;
+	case ']':
+		pv->type = SRPC_END;
+	consume_space:
 		p->next++;
-		(*pdepth)--;
 		return *(p->next++) != ' ';
 
-	case 'n':
-	case 'i':
-	parse_double:
-		// NAN or INF
-		pv->type = ANY_DOUBLE;
-		return parse_float64(&p->next, negate, &pv->value.d);
+	case '0':
+		if (p->next[1] != 'x') {
+			num = 0;
+			p->next++;
+			goto parse_number;
+		}
+		// fallthrough
+	case 'n': // nan
+	case 'i': // inf
+		pv->type = SRPC_DOUBLE;
+		return parse_float64(&p->next, negate, &pv->d);
 
 	default:
-		if (p->next[1] == 'x') {
-			goto parse_double;
-		} else {
-			// integer, bytes, or string
-			if (parse_dec_int(&p->next, negate, &pv->value.i)) {
+		if (parse_dec_uint64(&p->next, &num)) {
+			return -1;
+		}
+		// fallthrough
+	parse_number:
+		// integer, bytes, or string
+		switch (*(p->next++)) {
+		case ';':
+			pv->type = SRPC_BYTES;
+			goto parse_string_data;
+		case ':':
+			pv->type = SRPC_STRING;
+		parse_string_data:
+			if (negate || num > INT_MAX) {
+				return -1;
+			} else if (num > (p->end - p->next) + 1) {
+				p->next = p->end;
 				return -1;
 			}
-			switch (*(p->next++)) {
-			case '|':
-				pv->type = ANY_BYTES;
-				goto parse_string_data;
-			case ':':
-				pv->type = ANY_STRING;
-			parse_string_data:
-				pv->value.string.s = p->next;
-				if (negate) {
-					return -1;
-				} else if (pv->value.i >
-					   (p->end - p->next) + 1) {
-					p->next = p->end;
-					return -1;
-				}
-				p->next += pv->value.i;
-				return (*(p->next++) != ' ');
+			pv->string.s = p->next;
+			pv->string.n = (int)num;
+			p->next += pv->string.n;
+			return (*(p->next++) != ' ');
 
-			case '@':
-				pv->type = ANY_REFERENCE;
-				return (*(p->next++) != ' ');
+		case '@':
+			pv->ref = (uintptr_t)num;
+			pv->type = SRPC_REFERENCE;
+			return negate || (num > (uint64_t)UINTPTR_MAX) ||
+			       (*(p->next++) != ' ');
 
-			case ' ':
-				pv->type = ANY_INT;
+		case ' ':
+			if (num < (uint64_t)INT_MAX) {
+				pv->i = (1 - 2 * negate) * (int)num;
+				pv->type = SRPC_INT;
 				return 0;
-
-			default:
-				return -1;
+			} else if (num < (uint64_t)INT64_MAX) {
+				pv->i64 = (1 - 2 * negate) * (int64_t)num;
+				pv->type = SRPC_INT64;
+				return 0;
+			} else {
+				pv->u64 = num;
+				pv->type = SRPC_UINT64;
+				return negate;
 			}
+
+		default:
+			return -1;
 		}
 	}
 }
 
-int parse_any(struct parser *p, struct any *pv)
+int srpc_any(srpc_parser *p, struct srpc_any *pv)
 {
-	int depth = 0;
 	char ch = *p->next;
-	if (do_parse_any(p, pv, &depth) || depth < 0) {
+	if (srpc_next(p, pv)) {
 		return -1;
-	} else if (!depth) {
-		// normal type
-		return 0;
 	}
 
-	// container type
-	pv->type = (ch == '[') ? ANY_ARRAY : ANY_MAP;
-	pv->value.array.next = p->next;
-
-	do {
-		struct any dummy;
-		if (do_parse_any(p, &dummy, &depth)) {
-			return -1;
-		}
-	} while (depth);
-
-	pv->value.array.end = p->next - 2;
+	if (pv->type == SRPC_ARRAY || pv->type == SRPC_MAP) {
+		pv->array.next = p->next;
+		int depth = 1;
+		enum srpc_type t;
+		do {
+			struct srpc_any dummy;
+			if (srpc_next(p, &dummy)) {
+				return -1;
+			}
+			switch (dummy.type) {
+			case SRPC_ARRAY:
+			case SRPC_MAP:
+				depth++;
+				break;
+			case SRPC_END:
+				depth--;
+				break;
+			}
+		} while (depth);
+		pv->array.end = p->next - 2;
+	}
 
 	return 0;
 }
@@ -566,7 +630,8 @@ static int format_double(char *p, double v)
 static int format_string(char *p, int bufsz, char delim, int n, const char *v)
 {
 	// format the size
-	int hdr = format_int(p, n);
+	int hdr = format_uint(p, (unsigned)n);
+	p += hdr;
 	*(p++) = delim;
 
 	int ret = 1 + hdr + n;
@@ -579,12 +644,54 @@ static int format_string(char *p, int bufsz, char delim, int n, const char *v)
 	return ret;
 }
 
+static int format_array(char *p, int bufsz, char open, char close, const char *start, const char *end)
+{
+	int n = (int)(end-start);
+	int need = 2 + n + 1;
+	if (need <= bufsz) {
+		*(p++) = open;
+		*(p++) = ' ';
+		memcpy(p, start, n);
+		p += n;
+		*(p++) = close;
+	}
+	return need;
+}
+
 static int format_arg(char *p, int bufsz, const char **pfmt, va_list ap)
 {
 	int n;
 	const char *str;
+	const struct srpc_any *any;
 
 	switch (*((*pfmt)++)) {
+	case 'p':
+		// any
+		any = va_arg(ap, const struct srpc_any*);
+		switch (any->type) {
+		case SRPC_INT:
+			return format_int(p, any->i);
+		case SRPC_INT64:
+			return format_int64(p, any->i64);
+		case SRPC_UINT64:
+			return format_uint64(p, any->u64);
+		case SRPC_DOUBLE:
+			return format_double(p, any->d);
+		case SRPC_STRING:
+			return format_string(p, bufsz, ':', any->string.n, any->string.s);
+		case SRPC_BYTES:
+			return format_string(p, bufsz, ';', any->bytes.n, (const char*)any->bytes.p);
+		case SRPC_ARRAY:
+			return format_array(p, bufsz, '[', ']', any->array.next, any->array.end);
+		case SRPC_MAP:
+			return format_array(p, bufsz, '{', '}', any->map.next, any->map.end);
+		case SRPC_REFERENCE:
+			n = format_uint(p, any->ref);
+			*(p++) = '@';
+			return n + 1;
+		default:
+			return -1;
+		}
 	case 'l':
 		// %lld or %llu
 		if (*((*pfmt)++) != 'l') {
@@ -616,7 +723,7 @@ static int format_arg(char *p, int bufsz, const char **pfmt, va_list ap)
 		case 's':
 			return format_string(p, bufsz, ':', n, str);
 		case 'p':
-			return format_string(p, bufsz, '|', n, str);
+			return format_string(p, bufsz, ';', n, str);
 		default:
 			return -1;
 		}
@@ -649,7 +756,7 @@ static int format_arg(char *p, int bufsz, const char **pfmt, va_list ap)
 
 #define MAX_ATOM_SIZE 24
 
-static int rpc_vformat(char *p, int bufsz, const char *fmt, va_list ap)
+int srpc_vformat(char *p, int bufsz, const char *fmt, va_list ap)
 {
 	int sz = 0;
 
@@ -701,71 +808,54 @@ static int rpc_vformat(char *p, int bufsz, const char *fmt, va_list ap)
 	}
 }
 
-static int rpc_format(char *buf, int bufsz, const char *fmt, ...)
+int srpc_format(char *buf, int bufsz, const char *fmt, ...)
 {
 	va_list ap;
 	va_start(ap, fmt);
-	int ret = rpc_vformat(buf, bufsz, fmt, ap);
+	int ret = srpc_vformat(buf, bufsz, fmt, ap);
 	va_end(ap);
 	return ret;
 }
 
-static const char test[] =
-	"3:cmd 123 [ 23 3:abc ] nan inf -inf 1|\n 3:cde 0x1.abcdp+3 \n";
-
-int main(int argc, const char *argv[])
+void srpc_pack(char *buf, int sz)
 {
-	char buf[1024];
-	int n = rpc_format(buf, sizeof(buf), "cmd %d %a %a \n", -123,
-			   3121321321.1, NAN);
-	printf("%.*s %a %a\n", n, buf, 3121321321.1, -0.0);
-
-	struct parser p = { test, test + strlen(test) };
-	for (;;) {
-		struct any v;
-		if (parse_any(&p, &v)) {
-			printf("got error\n");
-			return 2;
-		}
-		switch (v.type) {
-		case ANY_EOL:
-			printf("EOL\n");
-			return 0;
-		case ANY_INT:
-			printf("INT %d\n", v.value.i);
-			break;
-		case ANY_UINT64:
-			printf("UINT64 %#llx\n", v.value.u);
-			break;
-		case ANY_DOUBLE:
-			printf("DOUBLE %f %a\n", v.value.d, v.value.d);
-			break;
-		case ANY_WORD:
-			printf("WORD '%.*s'\n", v.value.string.n,
-			       v.value.string.s);
-			break;
-		case ANY_STRING:
-			printf("STRING '%.*s'\n", v.value.string.n,
-			       v.value.string.s);
-			break;
-		case ANY_BYTES:
-			printf("BYTES '%.*s'\n", v.value.bytes.n,
-			       (char *)v.value.bytes.p);
-			break;
-		case ANY_ARRAY:
-			printf("ARRAY '%.*s'\n",
-			       (int)(v.value.array.end - v.value.array.next),
-			       v.value.array.next);
-			break;
-
-		case ANY_MAP:
-			printf("MAP '%.*s'\n",
-			       (int)(v.value.array.end - v.value.array.next),
-			       v.value.array.next);
-			break;
-		default:
-			printf("UNKNOWN %d\n", v.type);
-			return 3;
-		}
-	}
+	assert(6 <= sz && sz <= 4096 && buf[sz - 2] == '\r' &&
+	       buf[sz - 1] == '\n' && buf[3] == '|');
+	buf[0] = hex_chars[sz >> 12];
+	buf[1] = hex_chars[(sz >> 8) & 15];
+	buf[2] = hex_chars[sz & 15];
 }
+
+int srpc_unpack(srpc_parser *p, char *buf, int sz)
+{
+	if (sz < 6) {
+		// need more data to be able to parse the header
+		return 0;
+	}
+
+	int v1 = is_valid_hex(buf[0]);
+	int v2 = is_valid_hex(buf[1]);
+	int v3 = is_valid_hex(buf[2]);
+	int v4 = (buf[3] == '|');
+	if (!(v1 && v2 && v3 && v4)) {
+		// invalid or extended header
+		return -1;
+	}
+
+	int msgsz = (hex_value(buf[0]) << 8) | (hex_value(buf[1]) << 4) |
+		    hex_value(buf[2]);
+
+	if (sz < msgsz) {
+		return 0;
+	} else if (msgsz < 6 || buf[msgsz - 2] != '\r' ||
+		   buf[msgsz - 1] != '\n') {
+		return -1;
+	}
+	// we have a valid complete message
+	buf[msgsz - 2] = ' ';
+	buf[msgsz - 1] = '\0';
+	p->next = &buf[4];
+	p->end = &buf[msgsz - 1];
+	return msgsz;
+}
+
