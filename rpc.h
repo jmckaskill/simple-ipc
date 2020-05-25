@@ -24,8 +24,8 @@ typedef struct srpc_parser srpc_parser;
 struct srpc_any {
 	union {
 		int i;
-		int64_t i64;
-		uint64_t u64;
+		long long llong;
+		unsigned long long ullong;
 		uintptr_t ref;
 		double d;
 		struct {
@@ -45,12 +45,12 @@ struct srpc_any {
 int srpc_next(srpc_parser *p, struct srpc_any *pv);
 int srpc_any(srpc_parser *p, struct srpc_any *pv);
 int srpc_int(srpc_parser *p, int *pv);
-int srpc_int64(srpc_parser *p, int64_t *pv);
+int srpc_long(srpc_parser *p, long long *pv);
 int srpc_uint(srpc_parser *p, unsigned *pv);
-int srpc_uint64(srpc_parser *p, uint64_t *pv);
+int srpc_ulong(srpc_parser *p, unsigned long long *pv);
 int srpc_reference(srpc_parser *p, uintptr_t *pv);
-int srpc_float32(srpc_parser *p, float *pv);
-int srpc_float64(srpc_parser *p, double *pv);
+int srpc_float(srpc_parser *p, float *pv);
+int srpc_double(srpc_parser *p, double *pv);
 int srpc_string(srpc_parser *p, int *pn, const char **ps);
 int srpc_bytes(srpc_parser *p, int *pv, const unsigned char **pp);
 
@@ -76,9 +76,9 @@ int srpc_bytes(srpc_parser *p, int *pv, const unsigned char **pp);
 // number of characters written (if < bufsz)
 // buffer size needed (if > bufsz)
 int srpc_format(char *buf, int bufsz, const char *fmt, ...)
-       	__attribute__((format (printf, 3, 4)));
+	__attribute__((format(printf, 3, 4)));
 int srpc_vformat(char *buf, int bufsz, const char *fmt, va_list ap)
-       	__attribute__((format (printf, 3, 0)));
+	__attribute__((format(printf, 3, 0)));
 
 // This writes the framing header size
 // Framed messages are of the form 8bc|....\r\n
@@ -92,5 +92,3 @@ void srpc_pack(char *buf, int sz);
 // 0 if more data is needed
 // > 0 number of bytes in the message and p is setup with the start and end
 int srpc_unpack(srpc_parser *p, char *buf, int sz);
-
-int srpc_test();

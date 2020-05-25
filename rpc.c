@@ -110,9 +110,9 @@ int srpc_parse_uint64(srpc_parser *p, uint64_t *pv)
 int srpc_reference(srpc_parser *p, uintptr_t *pv)
 {
 #if UINTPTR_MAX > UINT_MAX
-	uint64_t u64;
-	int err = parse_dec_uint64(&p->next, &u64);
-	*pv = (uintptr_t)u64;
+	uint64_t ull;
+	int err = parse_dec_uint64(&p->next, &ull);
+	*pv = (uintptr_t)ull;
 #else
 	unsigned u;
 	int err = parse_dec_uint(&p->next, &u);
@@ -152,7 +152,7 @@ static inline int hex_value(char ch)
 	// Top 7 bits indicates index. Botom bit indicates which
 	// nibble within the lookup to use. Character has already
 	// been verified to be a valid hex byte.
-	return (hex_lookup[8+(ch >> 1)] >> ((ch & 1) << 2)) & 15;
+	return (hex_lookup[8 + (ch >> 1)] >> ((ch & 1) << 2)) & 15;
 }
 
 static int parse_hex_float(const char **p, int negate, uint64_t *pfrac,
@@ -284,7 +284,7 @@ static int parse_float32(const char **p, float *pv)
 	return 0;
 }
 
-int srpc_float32(srpc_parser *p, float *pv)
+int srpc_float(srpc_parser *p, float *pv)
 {
 	return parse_float32(&p->next, pv);
 }
@@ -345,7 +345,7 @@ static int parse_float64(const char **p, int negate, double *pv)
 	return 0;
 }
 
-int srpc_float64(srpc_parser *p, double *pv)
+int srpc_double(srpc_parser *p, double *pv)
 {
 	int negate = (*p->next == '-');
 	p->next += negate;
@@ -374,7 +374,7 @@ int srpc_string(srpc_parser *p, int *pn, const char **ps)
 
 int srpc_bytes(srpc_parser *p, int *pn, const unsigned char **pp)
 {
-	return parse_szstring(p, ';', pn, (const char **)pp);
+	return parse_szstring(p, '|', pn, (const char **)pp);
 }
 
 int srpc_next(srpc_parser *p, struct srpc_any *pv)
@@ -434,7 +434,7 @@ test_char:
 	parse_number:
 		// integer, bytes, or string
 		switch (*(p->next++)) {
-		case ';':
+		case '|':
 			pv->type = SRPC_BYTES;
 			goto parse_string_data;
 		case ':':
@@ -463,11 +463,11 @@ test_char:
 				pv->type = SRPC_INT;
 				return 0;
 			} else if (num < (uint64_t)INT64_MAX) {
-				pv->i64 = (1 - 2 * negate) * (int64_t)num;
+				pv->llong = (1 - 2 * negate) * (int64_t)num;
 				pv->type = SRPC_INT64;
 				return 0;
 			} else {
-				pv->u64 = num;
+				pv->ullong = num;
 				pv->type = SRPC_UINT64;
 				return negate;
 			}
@@ -480,7 +480,6 @@ test_char:
 
 int srpc_any(srpc_parser *p, struct srpc_any *pv)
 {
-	char ch = *p->next;
 	if (srpc_next(p, pv)) {
 		return -1;
 	}
@@ -488,7 +487,6 @@ int srpc_any(srpc_parser *p, struct srpc_any *pv)
 	if (pv->type == SRPC_ARRAY || pv->type == SRPC_MAP) {
 		pv->array.next = p->next;
 		int depth = 1;
-		enum srpc_type t;
 		do {
 			struct srpc_any dummy;
 			if (srpc_next(p, &dummy)) {
@@ -501,6 +499,8 @@ int srpc_any(srpc_parser *p, struct srpc_any *pv)
 				break;
 			case SRPC_END:
 				depth--;
+				break;
+			default:
 				break;
 			}
 		} while (depth);
@@ -644,9 +644,10 @@ static int format_string(char *p, int bufsz, char delim, int n, const char *v)
 	return ret;
 }
 
-static int format_array(char *p, int bufsz, char open, char close, const char *start, const char *end)
+static int format_array(char *p, int bufsz, char open, char close,
+			const char *start, const char *end)
 {
-	int n = (int)(end-start);
+	int n = (int)(end - start);
 	int need = 2 + n + 1;
 	if (need <= bufsz) {
 		*(p++) = open;
@@ -667,24 +668,28 @@ static int format_arg(char *p, int bufsz, const char **pfmt, va_list ap)
 	switch (*((*pfmt)++)) {
 	case 'p':
 		// any
-		any = va_arg(ap, const struct srpc_any*);
+		any = va_arg(ap, const struct srpc_any *);
 		switch (any->type) {
 		case SRPC_INT:
 			return format_int(p, any->i);
 		case SRPC_INT64:
-			return format_int64(p, any->i64);
+			return format_int64(p, any->llong);
 		case SRPC_UINT64:
-			return format_uint64(p, any->u64);
+			return format_uint64(p, any->ullong);
 		case SRPC_DOUBLE:
 			return format_double(p, any->d);
 		case SRPC_STRING:
-			return format_string(p, bufsz, ':', any->string.n, any->string.s);
+			return format_string(p, bufsz, ':', any->string.n,
+					     any->string.s);
 		case SRPC_BYTES:
-			return format_string(p, bufsz, ';', any->bytes.n, (const char*)any->bytes.p);
+			return format_string(p, bufsz, '|', any->bytes.n,
+					     (const char *)any->bytes.p);
 		case SRPC_ARRAY:
-			return format_array(p, bufsz, '[', ']', any->array.next, any->array.end);
+			return format_array(p, bufsz, '[', ']', any->array.next,
+					    any->array.end);
 		case SRPC_MAP:
-			return format_array(p, bufsz, '{', '}', any->map.next, any->map.end);
+			return format_array(p, bufsz, '{', '}', any->map.next,
+					    any->map.end);
 		case SRPC_REFERENCE:
 			n = format_uint(p, any->ref);
 			*(p++) = '@';
@@ -723,7 +728,7 @@ static int format_arg(char *p, int bufsz, const char **pfmt, va_list ap)
 		case 's':
 			return format_string(p, bufsz, ':', n, str);
 		case 'p':
-			return format_string(p, bufsz, ';', n, str);
+			return format_string(p, bufsz, '|', n, str);
 		default:
 			return -1;
 		}
@@ -819,10 +824,10 @@ int srpc_format(char *buf, int bufsz, const char *fmt, ...)
 
 void srpc_pack(char *buf, int sz)
 {
-	assert(6 <= sz && sz <= 4096 && buf[sz - 2] == '\r' &&
-	       buf[sz - 1] == '\n' && buf[3] == '|');
-	buf[0] = hex_chars[sz >> 12];
-	buf[1] = hex_chars[(sz >> 8) & 15];
+	assert(6 <= sz && sz <= 4096 && buf[sz - 2] == ';' &&
+	       buf[sz - 1] == '\n' && buf[3] == ' ');
+	buf[0] = hex_chars[sz >> 8];
+	buf[1] = hex_chars[(sz >> 4) & 15];
 	buf[2] = hex_chars[sz & 15];
 }
 
@@ -836,7 +841,7 @@ int srpc_unpack(srpc_parser *p, char *buf, int sz)
 	int v1 = is_valid_hex(buf[0]);
 	int v2 = is_valid_hex(buf[1]);
 	int v3 = is_valid_hex(buf[2]);
-	int v4 = (buf[3] == '|');
+	int v4 = (buf[3] == ' ');
 	if (!(v1 && v2 && v3 && v4)) {
 		// invalid or extended header
 		return -1;
@@ -847,7 +852,7 @@ int srpc_unpack(srpc_parser *p, char *buf, int sz)
 
 	if (sz < msgsz) {
 		return 0;
-	} else if (msgsz < 6 || buf[msgsz - 2] != '\r' ||
+	} else if (msgsz < 6 || buf[msgsz - 2] != ';' ||
 		   buf[msgsz - 1] != '\n') {
 		return -1;
 	}
@@ -858,4 +863,3 @@ int srpc_unpack(srpc_parser *p, char *buf, int sz)
 	p->end = &buf[msgsz - 1];
 	return msgsz;
 }
-

@@ -1,3 +1,5 @@
 #!/bin/sh
-gcc -g server.c rpc.c -o server || exit 1
-gcc -g rpc_test.c -o test && test || exit 1
+rm -f server test client
+gcc -g -Os -Wall rpc_test.c -o test && ./test || exit 1
+gcc -g -Os -Wall server.c rpc.c -o server || exit 1
+gcc -g -Os -Wall client.c rpc.c -o client || exit 1
