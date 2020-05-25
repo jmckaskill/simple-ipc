@@ -19,7 +19,7 @@ int main()
 	for (;;) {
 		char buf[4096];
 		int r = recv(fd, buf, sizeof(buf), 0);
-		srpc_parser p;
+		srpc_parser_t p;
 		int used = 0;
 		while (used < r) {
 			int n = srpc_unpack(&p, buf + used, r - used);
@@ -30,7 +30,7 @@ int main()
 			used += n;
 
 			for (;;) {
-				struct srpc_any v;
+				srpc_any_t v;
 				if (srpc_any(&p, &v)) {
 					fprintf(stderr, "got error\n");
 					break;
@@ -39,15 +39,13 @@ int main()
 					break;
 				}
 				switch (v.type) {
-				case SRPC_INT:
-					fprintf(stderr, "INT %d\n", v.i);
+				case SRPC_NEGATIVE_INT:
+					fprintf(stderr, "INT -%llu\n",
+						(unsigned long long)v.n);
 					break;
-				case SRPC_INT64:
-					fprintf(stderr, "INT %lld\n", v.llong);
-					break;
-				case SRPC_UINT64:
-					fprintf(stderr, "UINT64 %llu\n",
-						v.ullong);
+				case SRPC_POSITIVE_INT:
+					fprintf(stderr, "INT %llu\n",
+						(unsigned long long)v.n);
 					break;
 				case SRPC_DOUBLE:
 					fprintf(stderr, "DOUBLE %f %a\n", v.d,
@@ -73,7 +71,9 @@ int main()
 						v.map.next);
 					break;
 				case SRPC_REFERENCE:
-					fprintf(stderr, "REF %zu\n", v.ref);
+					fprintf(stderr, "REF '%.*s'\n",
+						v.reference.n,
+						(char *)v.reference.p);
 					break;
 				default:
 					fprintf(stderr, "UNKNOWN %d\n", v.type);

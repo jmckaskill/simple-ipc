@@ -4,7 +4,7 @@
 #include <math.h>
 
 static const char test[] =
-	"000 3:cmd 123 [ 23 3:abc ] nan inf -inf 1|\n 3:cde 0x1.abcdp+3;\n";
+	"000 3:cmd -123 [ 23 3:abc ] nan inf -inf 1|\n 3:cde abcdp3;\n";
 
 int main(int argc, const char *argv[])
 {
@@ -20,7 +20,7 @@ int main(int argc, const char *argv[])
 	srpc_pack(buf, strlen(test));
 	send(fd, buf, strlen(test), 0);
 
-	int n = srpc_format(buf, sizeof(buf), "000 3:cmd %d %a %a;\n", -123,
+	int n = srpc_format(buf, sizeof(buf), "000 3:cmd %d %f %f;\n", -123,
 			    3121321321.1, NAN);
 	srpc_pack(buf, n);
 	send(fd, buf, n, 0);

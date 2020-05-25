@@ -1,32 +1,34 @@
 #pragma once
 #include <stdint.h>
 #include <stdarg.h>
+#include <stdbool.h>
+#include <float.h>
 
 enum srpc_type {
-	SRPC_END = 0,
-	SRPC_INT = 1,
-	SRPC_INT64 = 2,
-	SRPC_UINT64 = 3,
-	SRPC_DOUBLE = 4,
-	SRPC_STRING = 5,
-	SRPC_BYTES = 6,
-	SRPC_REFERENCE = 7,
-	SRPC_ARRAY = 8,
-	SRPC_MAP = 9,
+	SRPC_END,
+	SRPC_BOOL,
+	SRPC_POSITIVE_INT,
+	SRPC_NEGATIVE_INT,
+	SRPC_DOUBLE,
+	SRPC_STRING,
+	SRPC_BYTES,
+	SRPC_REFERENCE,
+	SRPC_ARRAY,
+	SRPC_MAP,
+	SRPC_ARRAY_END,
+	SRPC_MAP_END,
 };
 
 struct srpc_parser {
 	const char *next;
 	const char *end;
 };
-typedef struct srpc_parser srpc_parser;
+typedef struct srpc_parser srpc_parser_t;
 
 struct srpc_any {
 	union {
-		int i;
-		long long llong;
-		unsigned long long ullong;
-		uintptr_t ref;
+		bool b;
+		uint64_t n;
 		double d;
 		struct {
 			int n;
@@ -35,41 +37,41 @@ struct srpc_any {
 		struct {
 			int n;
 			const unsigned char *p;
-		} bytes;
-		struct srpc_parser array, map;
+		} bytes, reference;
+		srpc_parser_t array, map;
 	};
 	enum srpc_type type;
 };
+typedef struct srpc_any srpc_any_t;
 
-// these returns 0 on success, -ve on error
-int srpc_next(srpc_parser *p, struct srpc_any *pv);
-int srpc_any(srpc_parser *p, struct srpc_any *pv);
-int srpc_int(srpc_parser *p, int *pv);
-int srpc_long(srpc_parser *p, long long *pv);
-int srpc_uint(srpc_parser *p, unsigned *pv);
-int srpc_ulong(srpc_parser *p, unsigned long long *pv);
-int srpc_reference(srpc_parser *p, uintptr_t *pv);
-int srpc_float(srpc_parser *p, float *pv);
-int srpc_double(srpc_parser *p, double *pv);
-int srpc_string(srpc_parser *p, int *pn, const char **ps);
-int srpc_bytes(srpc_parser *p, int *pv, const unsigned char **pp);
+// these returns 0 on success, non-zero on error
+int srpc_next(srpc_parser_t *p, srpc_any_t *pv);
+int srpc_any(srpc_parser_t *p, srpc_any_t *pv);
+int srpc_bool(srpc_parser_t *p, bool *pv);
+int srpc_int(srpc_parser_t *p, int *pv);
+int srpc_uint(srpc_parser_t *p, unsigned *pv);
+int srpc_int64(srpc_parser_t *p, int64_t *pv);
+int srpc_uint64(srpc_parser_t *p, uint64_t *pv);
+int srpc_float(srpc_parser_t *p, float *pv);
+int srpc_double(srpc_parser_t *p, double *pv);
+int srpc_string(srpc_parser_t *p, int *pn, const char **ps);
+int srpc_bytes(srpc_parser_t *p, int *pn, const unsigned char **pp);
+int srpc_reference(srpc_parser_t *p, int *pn, const unsigned char **pp);
 
 // These format a message using printf like syntax to aid in formatting
 // an RPC message. The following printf specifiers are supported
-// - %d - int
-// - %u - unsigned
-// - %zu - uintptr_t
-// - %lld - int64_t
-// - %llu - uint64_t
-// - %a - double or float
+// - %o - bool
+// - %i,%li,%lli,%zi - int,long,llong,intptr_t
+// - %u,%lu,%llu,%zu - unsigned,ulong,ullong,uintptr_t
+// - %f - double or float
 // - %*s - string - int followed by const char * argument
+// - %s - string - null terminated const char * argument
 // - %*p - bytes - int followed by const void * argument
-// - %p - any - pointer to struct srpc_any
-// - %s - raw copy of nul terminated string to the output
+// - %p - any - pointer to srpc_any_t
 // - %.*s - raw copy - int followed by const char * argument
 // - %% - raw % symbol
 // Any other character is copied verbatim to the output
-// To add a reference use %u@ or %zu@ or similar
+// To add a reference use the raw copy
 // A null byte is appended to the buffer but is not included in the returned byte count
 // Returns
 // -ve on error
@@ -91,4 +93,4 @@ void srpc_pack(char *buf, int sz);
 // -ve on error
 // 0 if more data is needed
 // > 0 number of bytes in the message and p is setup with the start and end
-int srpc_unpack(srpc_parser *p, char *buf, int sz);
+int srpc_unpack(srpc_parser_t *p, char *buf, int sz);
