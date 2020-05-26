@@ -4,7 +4,7 @@
 #include <math.h>
 
 static const char test[] =
-	"000 3:cmd -123 [ 23 3:abc ] nan inf -inf 1|\n 3:cde abcdp3;\n";
+	"3:cmd -123 [ 23 3:abc ] nan inf -inf 1|\n 3:cde abcdp3;\n";
 
 int main(int argc, const char *argv[])
 {
@@ -12,17 +12,14 @@ int main(int argc, const char *argv[])
 	un.sun_family = AF_UNIX;
 	strcpy(un.sun_path, "sock");
 
-	int fd = socket(AF_UNIX, SOCK_DGRAM, 0);
+	int fd = socket(AF_UNIX, SOCK_SEQPACKET, 0);
 	connect(fd, (struct sockaddr *)&un, sizeof(un));
 
-	char buf[1024];
-	strcpy(buf, test);
-	srpc_pack(buf, strlen(test));
-	send(fd, buf, strlen(test), 0);
+	send(fd, test, strlen(test), 0);
 
-	int n = srpc_format(buf, sizeof(buf), "000 3:cmd %d %f %f;\n", -123,
+	char buf[1024];
+	int n = srpc_format(buf, sizeof(buf), "3:cmd %d %f %f;\n", -123,
 			    3121321321.1, NAN);
-	srpc_pack(buf, n);
 	send(fd, buf, n, 0);
 	return 0;
 }

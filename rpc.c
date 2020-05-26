@@ -796,7 +796,7 @@ int srpc_format(char *buf, int bufsz, const char *fmt, ...)
 	return ret;
 }
 
-void srpc_pack(char *buf, int sz)
+void srpc_pack_stream(char *buf, int sz)
 {
 	assert(6 <= sz && sz <= 4096 && buf[sz - 2] == ';' &&
 	       buf[sz - 1] == '\n' && buf[3] == ' ');
@@ -805,7 +805,7 @@ void srpc_pack(char *buf, int sz)
 	buf[2] = hex_chars[sz & 15];
 }
 
-int srpc_unpack(srpc_parser_t *p, char *buf, int sz)
+int srpc_unpack_stream(srpc_parser_t *p, char *buf, int sz)
 {
 	if (sz < 6) {
 		// need more data to be able to parse the header
@@ -826,14 +826,18 @@ int srpc_unpack(srpc_parser_t *p, char *buf, int sz)
 
 	if (sz < msgsz) {
 		return 0;
-	} else if (msgsz < 6 || buf[msgsz - 2] != ';' ||
-		   buf[msgsz - 1] != '\n') {
+	}
+	return srpc_init(p, buf + 4, msgsz - 4);
+}
+
+int srpc_init(srpc_parser_t *p, char *buf, int sz)
+{
+	if (sz < 2 || buf[sz - 2] != ';' || buf[sz - 1] != '\n') {
 		return -1;
 	}
-	// we have a valid complete message
-	buf[msgsz - 2] = ' ';
-	buf[msgsz - 1] = '\0';
-	p->next = &buf[4];
-	p->end = &buf[msgsz - 1];
-	return msgsz;
+	buf[sz - 2] = ' ';
+	buf[sz - 1] = '\0';
+	p->next = buf;
+	p->end = &buf[sz - 1];
+	return 0;
 }

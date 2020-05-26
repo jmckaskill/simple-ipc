@@ -45,6 +45,7 @@ struct srpc_any {
 typedef struct srpc_any srpc_any_t;
 
 // these returns 0 on success, non-zero on error
+int srpc_init(srpc_parser_t *p, char *buf, int sz);
 int srpc_next(srpc_parser_t *p, srpc_any_t *pv);
 int srpc_any(srpc_parser_t *p, srpc_any_t *pv);
 int srpc_bool(srpc_parser_t *p, bool *pv);
@@ -87,10 +88,10 @@ int srpc_vformat(char *buf, int bufsz, const char *fmt, va_list ap)
 // The user must have already place dummy characters in the first three bytes
 // This will then write the correct characters.
 // The provided sz should be the full message size including the header and newline
-void srpc_pack(char *buf, int sz);
+void srpc_pack_stream(char *buf, int sz);
 
 // returns
 // -ve on error
 // 0 if more data is needed
 // > 0 number of bytes in the message and p is setup with the start and end
-int srpc_unpack(srpc_parser_t *p, char *buf, int sz);
+int srpc_unpack_stream(srpc_parser_t *p, char *buf, int sz);

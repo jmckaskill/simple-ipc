@@ -21,8 +21,7 @@ Atoms are one of:
 
 APIs should strictly define what atom types they support for a given argument. Atom types are not interchangeable unless the API supports so.
 
-All atom types are designed to have only a single encoding for a given value.
-This allows messages to be byte compared.
+All atom types are designed to have only a single encoding for a given value. This allows messages to be byte compared.
 
 | Type      | Regex                        |
 | --------- | ---------------------------- |
@@ -66,14 +65,14 @@ Implementations can decide how they want to read an arbitrary precision real in.
 
 For example a C implementation without bignum could act as follows:
 
-| Map To Type | Case         | Action                        |
-| ----------- | ------------ | ----------------------------- |
-| Integer     | Too Large    | Reject                        |
-| Integer     | Has Fraction | Reject                        |
-| Unsigned    | Negative     | Reject                        |
-| Float       | Too Large    | Map to + or - inf             |
-| Float       | Too Small    | Map to + or - 0               |
-| Float       | Too Detailed | Round to nearest represntable |
+| Map To Type | Case         | Action                               |
+| ----------- | ------------ | ------------------------------------ |
+| Integer     | Too Large    | Reject                               |
+| Integer     | Has Fraction | Reject                               |
+| Unsigned    | Negative     | Reject                               |
+| Float       | Too Large    | Map to + or - inf                    |
+| Float       | Too Small    | Map to + or - 0                      |
+| Float       | Too Detailed | Round to nearest representable value |
 
 Some examples
 
