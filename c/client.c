@@ -1,4 +1,4 @@
-#include "rpc.h"
+#include "ipc.h"
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <math.h>
@@ -18,7 +18,7 @@ int main(int argc, const char *argv[])
 	send(fd, test, strlen(test), 0);
 
 	char buf[1024];
-	int n = srpc_format(buf, sizeof(buf), "3:cmd %d %f %f;\n", -123,
+	int n = sipc_format(buf, sizeof(buf), "3:cmd %d %f %f;\n", -123,
 			    3121321321.1, NAN);
 	send(fd, buf, n, 0);
 	return 0;

@@ -1,4 +1,4 @@
-#include "rpc.h"
+#include "ipc.h"
 #include <stdio.h>
 #include <string.h>
 #include <sys/socket.h>
@@ -10,56 +10,56 @@ static int handler_thread(void *arg)
 {
 	int fd = (int)(uintptr_t)arg;
 	for (;;) {
-		srpc_parser_t p;
+		sipc_parser_t p;
 		char buf[4096];
 		int r = recv(fd, buf, sizeof(buf), 0);
 		if (r <= 0) {
 			break;
-		} else if (srpc_init(&p, buf, r)) {
+		} else if (sipc_init(&p, buf, r)) {
 			fprintf(stderr, "got init error\n");
 			break;
 		}
 
 		for (;;) {
-			srpc_any_t v;
-			if (srpc_any(&p, &v)) {
+			sipc_any_t v;
+			if (sipc_any(&p, &v)) {
 				fprintf(stderr, "got error\n");
 				break;
-			} else if (v.type == SRPC_END) {
+			} else if (v.type == SIPC_END) {
 				fprintf(stderr, "END\n");
 				break;
 			}
 			switch (v.type) {
-			case SRPC_NEGATIVE_INT:
+			case SIPC_NEGATIVE_INT:
 				fprintf(stderr, "INT -%llu\n",
 					(unsigned long long)v.n);
 				break;
-			case SRPC_POSITIVE_INT:
+			case SIPC_POSITIVE_INT:
 				fprintf(stderr, "INT %llu\n",
 					(unsigned long long)v.n);
 				break;
-			case SRPC_DOUBLE:
+			case SIPC_DOUBLE:
 				fprintf(stderr, "DOUBLE %f %a\n", v.d, v.d);
 				break;
-			case SRPC_STRING:
+			case SIPC_STRING:
 				fprintf(stderr, "STRING '%.*s'\n", v.string.n,
 					v.string.s);
 				break;
-			case SRPC_BYTES:
+			case SIPC_BYTES:
 				fprintf(stderr, "BYTES '%.*s'\n", v.bytes.n,
 					(char *)v.bytes.p);
 				break;
-			case SRPC_ARRAY:
+			case SIPC_ARRAY:
 				fprintf(stderr, "ARRAY '%.*s'\n",
 					(int)(v.array.end - v.array.next),
 					v.array.next);
 				break;
-			case SRPC_MAP:
+			case SIPC_MAP:
 				fprintf(stderr, "MAP '%.*s'\n",
 					(int)(v.map.end - v.map.next),
 					v.map.next);
 				break;
-			case SRPC_REFERENCE:
+			case SIPC_REFERENCE:
 				fprintf(stderr, "REF '%.*s'\n", v.reference.n,
 					(char *)v.reference.p);
 				break;

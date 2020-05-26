@@ -1,4 +1,4 @@
-This is an RPC serialization designed to be:
+This is an IPC serialization designed to be:
 
 * Relatively easy to use manually with netcat/socat/etc
 * Easy to troubleshoot & diagnose (hence text) but still relatively performant
@@ -122,7 +122,7 @@ Other transports may use different framing. For example QUIC has low overhead fr
 
 # Commands
 
-One common use case for this encoding is for RPC request/response type messages. In this case request are encoded in the form (excluding the framing):
+One common use case for this encoding is for IPC request/response type messages. In this case request are encoded in the form (excluding the framing):
 
     <verb> <arguments>...
 
