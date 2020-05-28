@@ -2,14 +2,55 @@ This is an IPC serialization designed to be:
 
 * Relatively easy to use manually with netcat/socat/etc
 * Easy to troubleshoot & diagnose (hence text) but still relatively performant
-* Still reasonably restrictive to make parsing implementations easy
+* Still reasonably restrictive to make parsing implementations easy & secure
 * Simple to use with sprintf or equivalent
 * No string escaping to ensure ease of use and security
 * Ability to bootstrap ancillary streams that can be used in high performance or more niche applications
 
-Each atom should be separated by a single space. Other whitespace must not be included including \t or \r.
+# Messages
 
-Atoms are one of:
+The main IPC channel is comprised of messages. These messages are comprised of a number of submessages. Each submessage is comprised of a list of atoms.
+
+Submessages take the form `<Type> <arg1> <arg2>...\n`. Each element is seperated by a space. The submessage as a whole is terminated by a newline. This must be the only whitespace included. The type prefix is a single character indicating the type of submessage.
+
+A message is terminated by a finishing submessage. These are indicated in the list below. Also some submessages can be repeated.
+
+This standard defines the following submessage types:
+
+| Type | Description    | Terminating | Repeatable | Format                   |
+| ---- | -------------- | ----------- | ---------- | ------------------------ |
+| R    | Request        | Yes         | No         | `R <cmd> <args>...`      |
+| S    | Success        | Yes         | No         | `S <args>...`            |
+| E    | Error          | Yes         | No         | `E <code> <description>` |
+| W    | Windows Handle | No          | Yes        | `W <handle>`             |
+
+# Transport
+
+A special submessage for the message length must be included for transports that do not preserve message boundaries or have a high per message overhead. This must be the first submessage and has the format `<message length>\n` where the message length is a whole number real atom (see below).
+
+This standard support the following transports:
+
+| Transport                 | Requires Length                                   |
+| ------------------------- | ------------------------------------------------- |
+| TCP                       | Yes                                               |
+| Quic                      | No                                                |
+| UDP                       | Yes (each datagram can support multiple messages) |
+| Unix SEQ_PACKET           | No                                                |
+| Windows PIPE_TYPE_MESSAGE | No                                                |
+
+## Ancillary Streams
+
+Some transports support messages carrying a reference to an external stream. This allows a message to bootstrap a dedicated channel that can be used for streaming data in this or any other protocol. The message may use submessages to setup the alternate stream.
+
+| Transport    | Stream Support                                                          |
+| ------------ | ----------------------------------------------------------------------- |
+| Unix Socket  | Yes through ancillary file descriptors                                  |
+| Windows Pipe | Yes if on the same PC through the W submessage                          |
+| Quic         | Yes but only a single stream that takes over the current stream channel |
+
+# Atoms
+
+Each atom should be separated by a single space. Other whitespace must not be included including \t or \r . Atoms are one of:
 
 * Boolean
 * Rationals
@@ -30,7 +71,7 @@ All atom types are designed to have only a single encoding for a given value. Th
 | String    | `[0-9a-f]+:.*`               |
 | Bytes     | `[0-9a-f]+|.*`               |
 | Reference | `[0-9a-f]+@`                 |
-| List Open | `[` and `]`                  |
+| List      | `[` and `]`                  |
 | Map       | `{` and `}`                  |
 
 # Real
@@ -96,16 +137,6 @@ Strings are encoded in a length prefix form of `[0-9a-f]+:..`. The hex digits be
 
 Bytes are similar to strings but use a pipe character instead of a colon (ie `[0-9a-f]+|...`). The length indicates the number of bytes in the value. The bytes after the pipe can be any 8 bit bytes.
 
-# Ancillary Reference
-
-File descriptors can be sent as ancillary data. By itself this does nothing. The sender must also send an argument that references the file descriptor. This is done by sending a reference atom of form `[0-9a-f]+@` . The meaning and interpretation of the number depends on the transport.
-
-| Transport Type      | Meaning                                   |
-| ------------------- | ----------------------------------------- |
-| Unix Domain Socket  | Index into fd list sent with the @ symbol |
-| Windows Pipe Server | Handle number in the target process       |
-| Quic                | Stream index                              |
-
 # Lists
 
 Lists are of the form `[ field1 field2 ]`. The opening, closing and each list item are seperated by a space.
@@ -113,6 +144,10 @@ Lists are of the form `[ field1 field2 ]`. The opening, closing and each list it
 # Maps
 
 Maps are of the form `{ key1 value1 key2 value2 }`. Each opening, closing brackets, key, and value is seperated by a space. Keys and values can be any type. Applications should specify what key and value types they expect.
+
+Maps must not contain the same key multiple times. If a reader sees this it should be treated as an error.
+
+Lists and maps may be nested up to 16 levels deep.
 
 # Framing
 

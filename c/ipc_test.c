@@ -97,7 +97,7 @@ static void test_parse()
 {
 	sipc_parser_t p;
 	p.next =
-		"T F 0 ff 1p8 180 1pc 1p1f -ff -7p1c 1abcdp-e nan inf -inf 0 80 1p8 3:abc 3|123 1abcdp-e ";
+		" T F 0 ff 1p8 180 1pc 1p1f -ff -7p1c 1abcdp-e nan inf -inf 0 80 1p8 3:abc 3|123 1abcdp-e\n";
 	p.end = p.next + strlen(p.next);
 
 	bool b;

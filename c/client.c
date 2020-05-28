@@ -1,25 +1,33 @@
 #include "ipc.h"
-#include <sys/socket.h>
-#include <sys/un.h>
+#include "common.c"
+#include "unix.h"
 #include <math.h>
+#include <unistd.h>
+#include <string.h>
 
 static const char test[] =
-	"3:cmd -123 [ 23 3:abc ] nan inf -inf 1|\n 3:cde abcdp3;\n";
+	"R 3:cmd -123 [ 23 3:abc ] nan inf -inf 1|\n 3:cde abcdp3\n";
 
 int main(int argc, const char *argv[])
 {
-	struct sockaddr_un un;
-	un.sun_family = AF_UNIX;
-	strcpy(un.sun_path, "sock");
+	print_message(test, strlen(test));
 
-	int fd = socket(AF_UNIX, SOCK_SEQPACKET, 0);
-	connect(fd, (struct sockaddr *)&un, sizeof(un));
+	int fd = ipc_unix_connect("sock");
+	if (fd < 0) {
+		perror("connect");
+		return 2;
+	}
 
 	send(fd, test, strlen(test), 0);
 
+	int fds[2];
+	pipe(fds);
+
 	char buf[1024];
-	int n = sipc_format(buf, sizeof(buf), "3:cmd %d %f %f;\n", -123,
-			    3121321321.1, NAN);
-	send(fd, buf, n, 0);
+	int n = sipc_format(buf, sizeof(buf), "R 3:cmd %d %f %f\n", -123,
+			    312132.1f, NAN);
+	ipc_unix_sendmsg(fd, buf, n, &fds[1], 1);
+	close(fds[1]);
+	read(fds[0], buf, sizeof(buf));
 	return 0;
 }

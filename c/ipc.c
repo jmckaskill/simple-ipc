@@ -100,16 +100,19 @@ static int parse_hex(sipc_parser_t *p, uint64_t *pv)
 
 static int parse_exponent(sipc_parser_t *p, int overflow, int *pexp)
 {
+	assert(*p->next == 'p');
+	p->next++; // leading 'p'
+
 	int expneg = (*p->next == '-');
 	p->next += expneg;
 
 	uint64_t uexp;
-	int experr = parse_hex(p, &uexp);
-	if (experr < 0 || *(p->next++) != ' ') {
+	int expoverflow = parse_hex(p, &uexp);
+	if (expoverflow < 0) {
 		return -1;
 	}
 
-	if (experr || uexp + overflow > INT_MAX) {
+	if (expoverflow || uexp + overflow > INT_MAX) {
 		// the exponent field has overflowed
 		*pexp = expneg ? INT_MIN : INT_MAX;
 		return 0;
@@ -119,45 +122,81 @@ static int parse_exponent(sipc_parser_t *p, int overflow, int *pexp)
 	return 0;
 }
 
-// parse_ureal parses an unsigned real
+static bool have_nan(sipc_parser_t *p)
+{
+	if (p->next[0] == ' ' && p->next[1] == 'n' && p->next[2] == 'a' &&
+	    p->next[3] == 'n') {
+		p->next += 4;
+		return true;
+	}
+	return false;
+}
+
+static bool have_inf(sipc_parser_t *p)
+{
+	if (p->next[0] == 'i' && p->next[1] == 'n' && p->next[2] == 'f') {
+		p->next += 3;
+		return true;
+	}
+	return false;
+}
+
+// parse_real parses a real
+// pnegate is set to 1 if the real is negative, set to NULL to generate an error
 // psig is filled with the significand
 // pexp is filled with the signed exponent
 // returns 0 on success, non-zero on error
-static int parse_real(sipc_parser_t *p, int negate, uint64_t *psig, int *pexp)
+static int parse_real(sipc_parser_t *p, int *pnegate, uint64_t *psig, int *pexp)
 {
+	// consume leading ' '
+	if (*p->next != ' ') {
+		return -1;
+	}
+	p->next++;
+
+	// consume leading '-'
+	if (pnegate) {
+		*pnegate = (*p->next == '-');
+		p->next += *pnegate;
+	}
+
+	if (have_inf(p)) {
+		*psig = 1;
+		*pexp = INT_MAX;
+		return 0;
+	}
+
 	// keep track of how much the significand overflowed so we can
 	// offset the exponent by that amount
 	int overflow = parse_hex(p, psig);
 	if (overflow < 0) {
 		return -1;
 	}
-	switch (*(p->next++)) {
-	case ' ':
-		// real without an exponent
-		// this is allowed if the last byte is non-zero
-		*pexp = 0;
-		return *psig ? !(*psig & 0xff) : negate;
-	case 'p':
+
+	if (*p->next == 'p') {
 		// real with exponent
 		if (!(*psig & 1)) {
 			return -1;
 		}
-		break;
-	default:
-		return -1;
+		return parse_exponent(p, overflow, pexp);
+	} else {
+		// real without an exponent
+		// this is allowed if the value is zero or the last byte is non-zero
+		*pexp = 0;
+		if (*psig) {
+			return !(*psig & 0xff);
+		} else {
+			return pnegate && *pnegate;
+		}
 	}
-
-	return parse_exponent(p, overflow, pexp);
 }
 
 int sipc_int64(sipc_parser_t *p, int64_t *pv)
 {
-	int negate = (*p->next == '-');
-	p->next += negate;
-
+	int negate = 0;
 	int exp;
 	uint64_t sig;
-	if (parse_real(p, negate, &sig, &exp)) {
+	if (parse_real(p, &negate, &sig, &exp)) {
 		return -1;
 	}
 	if (sig) {
@@ -180,7 +219,7 @@ int sipc_uint64(sipc_parser_t *p, uint64_t *pv)
 {
 	int exp;
 	uint64_t sig;
-	if (parse_real(p, 0, &sig, &exp)) {
+	if (parse_real(p, NULL, &sig, &exp)) {
 		return -1;
 	}
 	if (exp < 0 || (sig && __builtin_clzll(sig) < exp)) {
@@ -204,26 +243,6 @@ int sipc_uint(sipc_parser_t *p, unsigned *pv)
 	int err = sipc_uint64(p, &v);
 	*pv = (unsigned)v;
 	return err || v > UINT_MAX;
-}
-
-static bool have_nan(sipc_parser_t *p)
-{
-	if (p->next[0] == 'n' && p->next[1] == 'a' && p->next[2] == 'n' &&
-	    p->next[3] == ' ') {
-		p->next += 4;
-		return true;
-	}
-	return false;
-}
-
-static bool have_inf(sipc_parser_t *p)
-{
-	if (p->next[0] == 'i' && p->next[1] == 'n' && p->next[2] == 'f' &&
-	    p->next[3] == ' ') {
-		p->next += 4;
-		return true;
-	}
-	return false;
 }
 
 static double build_double(int negate, uint64_t sig, int exp)
@@ -271,24 +290,17 @@ static double build_double(int negate, uint64_t sig, int exp)
 
 int sipc_double(sipc_parser_t *p, double *pv)
 {
-	uint64_t sig;
-	int exp;
-
 	if (have_nan(p)) {
 		*pv = NAN;
 		return 0;
 	}
 
-	int negate = (*p->next == '-');
-	p->next += negate;
-
-	if (have_inf(p)) {
-		sig = 1;
-		exp = INT_MAX;
-	} else if (parse_real(p, negate, &sig, &exp)) {
+	uint64_t sig;
+	int exp;
+	int negate;
+	if (parse_real(p, &negate, &sig, &exp)) {
 		return -1;
 	}
-
 	*pv = build_double(negate, sig, exp);
 	return 0;
 }
@@ -305,16 +317,23 @@ static int parse_szstring(sipc_parser_t *p, char delim, int *psz,
 			  const char **pv)
 {
 	uint64_t sz;
+	if (*p->next != ' ') {
+		return -1;
+	}
+	p->next++;
 	if (parse_hex(p, &sz)) {
 		return -1;
 	}
+	// note: >= as we need to make sure we leave at least one
+	// byte being the \n after reading the string as the \n
+	// acts as a parsing terminator
 	if (*(p->next++) != delim || sz >= (p->end - p->next)) {
 		return -1;
 	}
 	*psz = (int)sz;
 	*pv = p->next;
 	p->next += sz;
-	return *(p->next++) != ' ';
+	return 0;
 }
 
 int sipc_string(sipc_parser_t *p, int *pn, const char **ps)
@@ -327,14 +346,14 @@ int sipc_bytes(sipc_parser_t *p, int *pn, const unsigned char **pp)
 	return parse_szstring(p, '|', pn, (const char **)pp);
 }
 
-int sipc_reference(sipc_parser_t *p, int *pn, const unsigned char **pp)
-{
-	return parse_szstring(p, '@', pn, (const char **)pp);
-}
-
 int sipc_bool(sipc_parser_t *p, bool *pv)
 {
-	switch (*(p->next++)) {
+	if (*p->next != ' ') {
+		return -1;
+	}
+	p->next++;
+
+	switch (*p->next) {
 	case 'T':
 		*pv = true;
 		break;
@@ -344,33 +363,40 @@ int sipc_bool(sipc_parser_t *p, bool *pv)
 	default:
 		return -1;
 	}
-	return *(p->next++) != ' ';
+	p->next++;
+
+	return 0;
 }
 
 int sipc_next(sipc_parser_t *p, sipc_any_t *pv)
 {
 	uint64_t sig;
+	int negate = 0;
 	int overflow;
 	int exp;
 
-	switch (*p->next) {
-	case '\0':
+	switch (p->next[0]) {
+	case '\n':
 		pv->type = SIPC_END;
-		return 0;
-
-	case '-':
 		p->next++;
-		if (have_inf(p)) {
-			pv->type = SIPC_DOUBLE;
-			pv->d = -INFINITY;
-			return 0;
-		} else if (parse_real(p, 1, &sig, &exp)) {
+		return 0;
+	case ' ':
+		break;
+	default:
+		return -1;
+	}
+
+	switch (p->next[1]) {
+	case '-':
+	case 'i': // for inf
+		if (parse_real(p, &negate, &sig, &exp)) {
 			return -1;
 		} else if (exp && (exp < 0 || exp > __builtin_clzll(sig))) {
 			pv->type = SIPC_DOUBLE;
 			pv->d = build_double(1, sig, exp);
 			return 0;
 		} else {
+			assert(negate);
 			pv->type = SIPC_NEGATIVE_INT;
 			pv->n = sig << exp;
 			return 0;
@@ -379,78 +405,75 @@ int sipc_next(sipc_parser_t *p, sipc_any_t *pv)
 	case 'T':
 		pv->type = SIPC_BOOL;
 		pv->b = true;
-		return 0;
+		goto single_char_atom;
 	case 'F':
 		pv->type = SIPC_BOOL;
 		pv->b = false;
-		return 0;
-
+		goto single_char_atom;
 	case '{':
 		pv->type = SIPC_MAP;
-		goto consume_space;
+		goto single_char_atom;
 	case '}':
 		pv->type = SIPC_MAP_END;
-		goto consume_space;
+		goto single_char_atom;
 	case '[':
 		pv->type = SIPC_ARRAY;
-		goto consume_space;
+		goto single_char_atom;
 	case ']':
 		pv->type = SIPC_ARRAY_END;
-	consume_space:
-		p->next++;
-		return *(p->next++) != ' ';
+	single_char_atom:
+		p->next += 2;
+		return 0;
 
 	case 'n':
 		pv->type = SIPC_DOUBLE;
 		pv->d = NAN;
 		return !have_nan(p);
 
-	case 'i':
-		pv->type = SIPC_DOUBLE;
-		pv->d = INFINITY;
-		return !have_inf(p);
-
 	default:
+		p->next++; // space
 		overflow = parse_hex(p, &sig);
 		if (overflow < 0) {
 			return -1;
 		}
-		switch (*(p->next++)) {
-		case ' ':
-			// no exponent - this form is allowed for 0 or if the bottom byte is non-zero
-			pv->type = SIPC_POSITIVE_INT;
-			pv->n = sig;
-			return sig && !(sig & 0xff);
+		switch (*p->next) {
 		case 'p':
-			if (!(sig & 1) || parse_exponent(p, overflow, &exp)) {
+			if (!(sig & 1)) {
 				return -1;
-			} else if (exp < 0 || exp > __builtin_clzll(sig)) {
+			} else if (parse_exponent(p, overflow, &exp)) {
+				return -1;
+			}
+
+			if (exp < 0 || exp > __builtin_clzll(sig)) {
 				pv->type = SIPC_DOUBLE;
 				pv->d = build_double(0, sig, exp);
-				return 0;
 			} else {
 				pv->type = SIPC_POSITIVE_INT;
 				pv->n = sig << exp;
-				return 0;
 			}
-		case '@':
-			pv->type = SIPC_REFERENCE;
-			goto have_szstring;
+			return 0;
 		case '|':
 			pv->type = SIPC_BYTES;
 			goto have_szstring;
 		case ':':
 			pv->type = SIPC_STRING;
 		have_szstring:
-			if (overflow || sig > (uint64_t)(p->end - p->next)) {
+			p->next++; // : or |
+			// note: >= as we need to make sure we leave at least one
+			// byte being the \n after reading the string as the \n
+			// acts as a parsing terminator
+			if (overflow || sig >= (uint64_t)(p->end - p->next)) {
 				return -1;
 			}
 			pv->string.n = (int)sig;
 			pv->string.s = p->next;
 			p->next += (int)sig;
-			return *(p->next++) != ' ';
+			return 0;
 		default:
-			return -1;
+			// no exponent - this form is allowed for 0 or if the bottom byte is non-zero
+			pv->type = SIPC_POSITIVE_INT;
+			pv->n = sig;
+			return sig && !(sig & 0xff);
 		}
 	}
 }
@@ -463,6 +486,8 @@ int sipc_any(sipc_parser_t *p, sipc_any_t *pv)
 
 	if (pv->type == SIPC_ARRAY || pv->type == SIPC_MAP) {
 		pv->array.next = p->next;
+		// bitfield of whether a given depth is an array (1) or map (0)
+		uint32_t is_array = (pv->type == SIPC_ARRAY) ? 1 : 0;
 		int depth = 1;
 		do {
 			sipc_any_t dummy;
@@ -472,10 +497,20 @@ int sipc_any(sipc_parser_t *p, sipc_any_t *pv)
 			switch (dummy.type) {
 			case SIPC_ARRAY:
 			case SIPC_MAP:
-				depth++;
+				if (depth++ == 16) {
+					return -1;
+				}
+				is_array <<= 1;
+				is_array |= (dummy.type == SIPC_ARRAY) ? 1 : 0;
 				break;
 			case SIPC_ARRAY_END:
 			case SIPC_MAP_END:
+				if ((is_array & 1) !=
+				    (dummy.type == SIPC_ARRAY_END ? 1 : 0)) {
+					// mismatched array/map pair
+					return -1;
+				}
+				is_array >>= 1;
 				depth--;
 				break;
 			case SIPC_END:
@@ -488,6 +523,30 @@ int sipc_any(sipc_parser_t *p, sipc_any_t *pv)
 	}
 
 	return 0;
+}
+
+int sipc_start(sipc_parser_t *p, enum sipc_msg_type *pv)
+{
+	// msg types must be a printable ascii byte
+	// this is really trying to protect against \n (empty line) and \0 (no more lines)
+	if (p->next == p->end || *p->next <= ' ') {
+		return -1;
+	}
+	*pv = (enum sipc_msg_type)(*p->next);
+	p->next++;
+	return 0;
+}
+
+int sipc_end(sipc_parser_t *p)
+{
+	sipc_any_t any;
+	for (;;) {
+		if (sipc_any(p, &any)) {
+			return -1;
+		} else if (any.type == SIPC_END) {
+			return 0;
+		}
+	}
 }
 
 static const char hex_chars[] = "0123456789abcdef";
@@ -637,9 +696,6 @@ static int format_arg(char *p, int bufsz, const char **pfmt, va_list ap)
 					     any->string.s);
 		case SIPC_BYTES:
 			return format_string(p, bufsz, '|', any->bytes.n,
-					     (const char *)any->bytes.p);
-		case SIPC_REFERENCE:
-			return format_string(p, bufsz, '@', any->bytes.n,
 					     (const char *)any->bytes.p);
 		case SIPC_ARRAY:
 			return format_array(p, bufsz, '[', ']', any->array.next,
@@ -796,18 +852,19 @@ int sipc_format(char *buf, int bufsz, const char *fmt, ...)
 	return ret;
 }
 
-void sipc_pack_stream(char *buf, int sz)
+void sipc_frame(char *buf, int sz)
 {
-	assert(6 <= sz && sz <= 4096 && buf[sz - 2] == ';' &&
-	       buf[sz - 1] == '\n' && buf[3] == ' ');
-	buf[0] = hex_chars[sz >> 8];
-	buf[1] = hex_chars[(sz >> 4) & 15];
-	buf[2] = hex_chars[sz & 15];
+	assert(6 <= sz && sz <= 0xFFFF && buf[sz - 1] == '\n' &&
+	       buf[4] == '\n');
+	buf[0] = hex_chars[sz >> 12];
+	buf[1] = hex_chars[(sz >> 8) & 15];
+	buf[2] = hex_chars[(sz >> 4) & 15];
+	buf[3] = hex_chars[sz & 15];
 }
 
-int sipc_unpack_stream(sipc_parser_t *p, char *buf, int sz)
+int sipc_unframe(sipc_parser_t *p, const char *buf, int sz)
 {
-	if (sz < 6) {
+	if (sz < 5) {
 		// need more data to be able to parse the header
 		return 0;
 	}
@@ -815,29 +872,31 @@ int sipc_unpack_stream(sipc_parser_t *p, char *buf, int sz)
 	int v1 = is_valid_hex(buf[0]);
 	int v2 = is_valid_hex(buf[1]);
 	int v3 = is_valid_hex(buf[2]);
-	int v4 = (buf[3] == ' ');
-	if (!(v1 && v2 && v3 && v4)) {
-		// invalid or extended header
+	int v4 = is_valid_hex(buf[3]);
+	int v5 = (buf[4] == '\n');
+	if (!(v1 && v2 && v3 && v4 && v5)) {
+		// invalid header
 		return -1;
 	}
 
-	int msgsz = (hex_value(buf[0]) << 8) | (hex_value(buf[1]) << 4) |
-		    hex_value(buf[2]);
+	int msgsz = (hex_value(buf[0]) << 12) | (hex_value(buf[1]) << 8) |
+		    (hex_value(buf[2] << 4)) | hex_value(buf[3]);
 
-	if (sz < msgsz) {
-		return 0;
+	if (msgsz >= sz) {
+		if (sipc_init(p, buf + 5, msgsz - 5)) {
+			return -1;
+		}
 	}
-	return sipc_init(p, buf + 4, msgsz - 4);
+
+	return msgsz;
 }
 
-int sipc_init(sipc_parser_t *p, char *buf, int sz)
+int sipc_init(sipc_parser_t *p, const char *buf, int sz)
 {
-	if (sz < 2 || buf[sz - 2] != ';' || buf[sz - 1] != '\n') {
+	if (sz < 1 || buf[sz - 1] != '\n') {
 		return -1;
 	}
-	buf[sz - 2] = ' ';
-	buf[sz - 1] = '\0';
 	p->next = buf;
-	p->end = &buf[sz - 1];
+	p->end = buf + sz;
 	return 0;
 }
