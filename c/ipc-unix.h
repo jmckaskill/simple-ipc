@@ -1,7 +1,7 @@
 #pragma once
-#include <sys/socket.h>
 
-struct sockaddr *ipc_new_unix_addr(const char *path, socklen_t *psasz);
+struct sockaddr;
+struct sockaddr *ipc_new_unix_addr(const char *path, int *psasz);
 
 // returns file descriptor or -ve on error
 int ipc_unix_connect(const char *path);
@@ -15,4 +15,3 @@ int ipc_unix_sendmsg(int fd, const char *buf, int sz, const int *fds, int fdn);
 // -ve on error - check errno
 // fdn is an inout value
 int ipc_unix_recvmsg(int fd, char *buf, int sz, int *fds, int *fdn);
-

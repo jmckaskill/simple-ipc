@@ -9,6 +9,34 @@
 #include <stdarg.h>
 #include <assert.h>
 
+#ifdef _MSC_VER
+#pragma warning(disable:26451) // overzealous arithmetic overflow check
+#include <intrin.h>
+#pragma intrinsic(_BitScanForward64)
+#pragma intrinsic(_BitScanReverse64)
+static int leading_zeros_64(uint64_t v)
+{
+	unsigned long ret = 0;
+	_BitScanReverse64(&ret, v);
+	return 63 - (int)ret;
+}
+static int trailing_zeros_64(uint64_t v)
+{
+	unsigned long ret = 0;
+	_BitScanForward64(&ret, v);
+	return (int)ret;
+}
+#elif defined(__GNUC__) || defined(__clang__)
+static int leading_zeros_64(uint64_t v)
+{
+	return __builtin_clzll(v);
+}
+static int trailing_zeros_64(uint64_t v)
+{
+	return __builtin_ctzll(v);
+}
+#endif
+
 static const uint8_t hex_valid[] = {
 	0x00, 0x00, 0x00, 0x00, // 00-1F
 	0x00, 0x00, 0xFF, 0x03, // 20-3F
@@ -26,7 +54,8 @@ static const uint8_t hex_lookup[] = {
 	0x00, 0x00, 0x00, 0x00, //
 	0x00, 0x01, 0x02, 0x03, //
 	0x04, 0x05, 0x06, 0x07, //
-	0x08, 0x09,
+	0x08, 0x09, 0x00, 0x00, //
+	0x00, 0x00, 0x00, 0x00, //
 };
 // '0' - 30h - 00110000b & 11111b = 10000b - 10h
 // '1' - 31h - 00110001b & 11111b = 10001b - 11h
@@ -200,14 +229,14 @@ int sipc_int64(sipc_parser_t *p, int64_t *pv)
 		return -1;
 	}
 	if (sig) {
-		if (exp < 0 || __builtin_clzll(sig) < exp) {
+		if (exp < 0 || leading_zeros_64(sig) < exp) {
 			return -1;
 		}
 		sig <<= exp;
 		if ((int64_t)(sig - negate) < 0) {
 			return -1;
 		}
-		*pv = (int64_t)(1 - 2 * negate) * (int64_t)sig;
+		*pv = (1 - 2 * (int64_t)negate) * (int64_t)sig;
 		return 0;
 	} else {
 		*pv = 0;
@@ -222,7 +251,7 @@ int sipc_uint64(sipc_parser_t *p, uint64_t *pv)
 	if (parse_real(p, NULL, &sig, &exp)) {
 		return -1;
 	}
-	if (exp < 0 || (sig && __builtin_clzll(sig) < exp)) {
+	if (exp < 0 || (sig && leading_zeros_64(sig) < exp)) {
 		return -1;
 	}
 	*pv = sig << (unsigned)exp;
@@ -253,7 +282,7 @@ static double build_double(int negate, uint64_t sig, int exp)
 	// convert to fractional form
 	// have a x 2^b
 	// want 1.a x 2^b
-	unsigned clz = __builtin_clzll(sig);
+	int clz = leading_zeros_64(sig);
 	sig <<= clz + 1;
 	exp += (sizeof(sig) * CHAR_BIT - 1) - clz;
 
@@ -327,7 +356,7 @@ static int parse_szstring(sipc_parser_t *p, char delim, int *psz,
 	// note: >= as we need to make sure we leave at least one
 	// byte being the \n after reading the string as the \n
 	// acts as a parsing terminator
-	if (*(p->next++) != delim || sz >= (p->end - p->next)) {
+	if (*(p->next++) != delim || sz >= (uint64_t)(p->end - p->next)) {
 		return -1;
 	}
 	*psz = (int)sz;
@@ -391,7 +420,7 @@ int sipc_next(sipc_parser_t *p, sipc_any_t *pv)
 	case 'i': // for inf
 		if (parse_real(p, &negate, &sig, &exp)) {
 			return -1;
-		} else if (exp && (exp < 0 || exp > __builtin_clzll(sig))) {
+		} else if (exp && (exp < 0 || exp > leading_zeros_64(sig))) {
 			pv->type = SIPC_DOUBLE;
 			pv->d = build_double(1, sig, exp);
 			return 0;
@@ -444,7 +473,7 @@ int sipc_next(sipc_parser_t *p, sipc_any_t *pv)
 				return -1;
 			}
 
-			if (exp < 0 || exp > __builtin_clzll(sig)) {
+			if (exp < 0 || exp > leading_zeros_64(sig)) {
 				pv->type = SIPC_DOUBLE;
 				pv->d = build_double(0, sig, exp);
 			} else {
@@ -525,16 +554,24 @@ int sipc_any(sipc_parser_t *p, sipc_any_t *pv)
 	return 0;
 }
 
-int sipc_start(sipc_parser_t *p, enum sipc_msg_type *pv)
+enum sipc_msg_type sipc_peek(sipc_parser_t *p)
+{
+	if (p->next == p->end || *p->next <= ' ') {
+		return SIPC_PARSE_ERROR;
+	} else {
+		return (enum sipc_msg_type)(*p->next);
+	}
+}
+
+enum sipc_msg_type sipc_start(sipc_parser_t *p)
 {
 	// msg types must be a printable ascii byte
 	// this is really trying to protect against \n (empty line) and \0 (no more lines)
 	if (p->next == p->end || *p->next <= ' ') {
-		return -1;
+		return SIPC_PARSE_ERROR;
+	} else {
+		return (enum sipc_msg_type)(*(p->next++));
 	}
-	*pv = (enum sipc_msg_type)(*p->next);
-	p->next++;
-	return 0;
 }
 
 int sipc_end(sipc_parser_t *p)
@@ -553,7 +590,7 @@ static const char hex_chars[] = "0123456789abcdef";
 
 static int format_hex(char *p, uint64_t v)
 {
-	int count = v ? (16 - (__builtin_clzll(v) / 4)) : 1;
+	int count = v ? (16 - (leading_zeros_64(v) / 4)) : 1;
 	for (int n = (count - 1) * 4; n >= 0; n -= 4) {
 		*(p++) = hex_chars[(v >> n) & 15];
 	}
@@ -562,7 +599,7 @@ static int format_hex(char *p, uint64_t v)
 
 static int format_uint64(char *p, uint64_t v)
 {
-	unsigned ctz = v ? __builtin_ctz(v) : 0;
+	unsigned ctz = v ? trailing_zeros_64(v) : 0;
 	if (ctz < 8) {
 		return format_hex(p, v);
 	}
@@ -624,7 +661,7 @@ static int format_double(char *p, double v)
 		// sig is currently in fractional 1.a x 2^b form
 		// need to convert to whole form a x 2^b
 		sig |= (uint64_t)1 << 52;
-		unsigned ctz = __builtin_ctzll(sig);
+		unsigned ctz = trailing_zeros_64(sig);
 		sig >>= ctz;
 		exp -= 52 - ctz;
 
@@ -769,7 +806,7 @@ static int format_arg(char *p, int bufsz, const char **pfmt, va_list ap)
 		}
 	case 's': // %s - string
 		str = va_arg(ap, const char *);
-		n = strlen(str);
+		n = (int)strlen(str);
 		return format_string(p, bufsz, ':', n, str);
 	case '.': // %.*s - raw copy
 		if (*((*pfmt)++) != '*' || *((*pfmt)++) != 's') {

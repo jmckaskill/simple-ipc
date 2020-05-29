@@ -1,3 +1,4 @@
+#ifndef _WIN32
 #include "unix.h"
 #include <unistd.h>
 #include <stdlib.h>
@@ -148,3 +149,4 @@ int ipc_unix_recvmsg(int fd, char *buf, int sz, int *fds, int *fdn) {
 	return r;
 }
 
+#endif

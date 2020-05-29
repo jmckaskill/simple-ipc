@@ -27,7 +27,10 @@ static void test_hex()
 }
 
 static void do_format(const char *expect, const char *fmt, ...)
-	__attribute__((format(printf, 2, 3)));
+#ifdef __GNUC__
+	__attribute__((format(printf, 2, 3)))
+#endif
+	;
 
 static void do_format(const char *expect, const char *fmt, ...)
 {
@@ -36,7 +39,7 @@ static void do_format(const char *expect, const char *fmt, ...)
 	va_start(ap, fmt);
 
 	va_copy(aq, ap);
-	vsprintf(buf2, fmt, aq);
+	vsnprintf(buf2, sizeof(buf2), fmt, aq);
 	va_end(aq);
 
 	int n = sipc_vformat(buf, sizeof(buf), fmt, ap);
@@ -74,7 +77,7 @@ static void test_format()
 	do_format("-7p1c", "%i", -0x70000000);
 	// double
 	do_format("1abcdp-e", "%f", 0x1abcdp-14);
-	do_format("nan", "%f", NAN);
+	do_format("nan", "%f", (double)NAN);
 	do_format("inf", "%f", INFINITY);
 	do_format("-inf", "%f", -INFINITY);
 	do_format("0", "%f", -0.0);

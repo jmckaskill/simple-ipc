@@ -1,21 +1,18 @@
 #include "ipc.h"
 #include <stdio.h>
 
-static void print_message(const char *buf, int sz)
+static void print_message(sipc_parser_t *p)
 {
-	sipc_parser_t p;
-	if (sipc_init(&p, buf, sz)) {
-		fprintf(stderr, "init error\n");
-		return;
-	}
-
-	enum sipc_msg_type msg;
-	while (!sipc_start(&p, &msg)) {
+	for (;;) {
+		enum sipc_msg_type msg = sipc_start(p);
+		if (!msg) {
+			break;
+		}
 		fprintf(stderr, "msg start %c\n", msg);
 
 		for (;;) {
 			sipc_any_t v;
-			if (sipc_any(&p, &v)) {
+			if (sipc_any(p, &v)) {
 				fprintf(stderr, "got error\n");
 				break;
 			} else if (v.type == SIPC_END) {
