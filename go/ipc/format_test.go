@@ -2,6 +2,7 @@ package ipc
 
 import (
 	"math"
+	"math/big"
 	"reflect"
 	"testing"
 )
@@ -29,7 +30,16 @@ func TestFormat(t *testing.T) {
 		{" 0", AppendFloat(nil, 0), float64(0)},
 		{" 80", AppendFloat(nil, 128), float64(128)},
 		{" 1p8", AppendFloat(nil, 256), float64(256)},
-		{" 0", AppendFloat(nil, -math.Float64frombits(20)), -math.Float64frombits(20)}, // subnormal
+		{" 0", AppendFloat(nil, -math.Float64frombits(1)), -math.Float64frombits(1)}, // subnormal
+
+		{" 1abcdp-e", AppendBigFloat(nil, big.NewFloat(0x1abcdp-14)), nil},
+		{" inf", AppendBigFloat(nil, big.NewFloat(math.Inf(1))), nil},
+		{" -inf", AppendBigFloat(nil, big.NewFloat(math.Inf(-1))), nil},
+		{" 0", AppendBigFloat(nil, big.NewFloat(0)), nil},
+		{" 80", AppendBigFloat(nil, big.NewFloat(128)), nil},
+		{" 1p8", AppendBigFloat(nil, big.NewFloat(256)), nil},
+		{" -1p-432", AppendBigFloat(nil, big.NewFloat(-math.Float64frombits(1))), nil}, // subnormal
+
 		{" 3:abc", AppendString(nil, "abc"), "abc"},
 		{" 3|123", AppendBytes(nil, []byte("123")), []byte("123")},
 	}
@@ -40,14 +50,16 @@ func TestFormat(t *testing.T) {
 		} else {
 			t.Logf("OK %d, got %q as expected", idx, got)
 		}
-		generic, err := AppendValue(nil, reflect.ValueOf(test.val))
-		if err != nil {
-			t.Errorf("ERR %d generic, unexpected error %v", idx, err)
-		}
-		if s := string(generic); test.expected != s {
-			t.Errorf("ERR %d generic, expected %q, got %q", idx, test.expected, s)
-		} else {
-			t.Logf("OK %d generic", idx)
+		if test.val != nil {
+			generic, err := AppendValue(nil, reflect.ValueOf(test.val))
+			if err != nil {
+				t.Errorf("ERR %d generic, unexpected error %v", idx, err)
+			}
+			if s := string(generic); test.expected != s {
+				t.Errorf("ERR %d generic, expected %q, got %q", idx, test.expected, s)
+			} else {
+				t.Logf("OK %d generic, got %q for %v as expected", idx, s, test.val)
+			}
 		}
 	}
 }

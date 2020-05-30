@@ -3,6 +3,7 @@ package ipc
 import (
 	"errors"
 	"math"
+	"math/big"
 	"math/bits"
 	"reflect"
 )
@@ -37,6 +38,37 @@ func AppendBool(b []byte, v bool) []byte {
 		return append(b, " T"...)
 	} else {
 		return append(b, " F"...)
+	}
+}
+
+func AppendBigFloat(b []byte, f *big.Float) []byte {
+	b = append(b, ' ')
+	if f.IsInf() {
+		if f.Signbit() {
+			return append(b, "-inf"...)
+		} else {
+			return append(b, "inf"...)
+		}
+	}
+	normexp := f.MantExp(nil)
+	minprec := int(f.MinPrec())
+	exp := normexp - minprec
+	if 0 <= exp && exp < 8 {
+		// non-exponent form
+		mant, _ := f.Int(nil)
+		return mant.Append(b, 16)
+	} else {
+		// explicit component form
+		// first shift up to get a whole number
+		mant, _ := new(big.Float).SetMantExp(f, minprec-normexp).Int(nil)
+		b = mant.Append(b, 16)
+		b = append(b, 'p')
+		if exp < 0 {
+			b = append(b, '-')
+			return appendHex(b, uint64(-exp))
+		} else {
+			return appendHex(b, uint64(exp))
+		}
 	}
 }
 

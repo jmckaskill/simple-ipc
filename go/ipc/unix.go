@@ -3,6 +3,7 @@ package ipc
 import (
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"math/rand"
 	"net"
@@ -70,6 +71,10 @@ func DialUnix(path string) (*net.UnixConn, error) {
 		Net:  "unixpacket",
 		Name: path,
 	})
+}
+
+func Dial(path string) (io.ReadWriteCloser, error) {
+	return DialUnix(path)
 }
 
 func isAlreadyInUse(err error) bool {
