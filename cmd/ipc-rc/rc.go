@@ -14,7 +14,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/c-bata/go-prompt"
-	"github.com/jmckaskill/simple-ipc/go/ipc"
+	"github.com/jmckaskill/simple-ipc/go-ipc"
 )
 
 var Verbose = false

@@ -1,7 +1,8 @@
 #include "ipc-windows.h"
+#ifdef _WIN32
 #include <Windows.h>
 
-void* ipc_win_connect(const char* path, bool overlapped) 
+void *ipc_win_connect(const char *path, bool overlapped)
 {
 	HANDLE h = CreateFileA(path, GENERIC_READ | GENERIC_WRITE,
 			       0, // no sharing
@@ -23,15 +24,15 @@ void* ipc_win_connect(const char* path, bool overlapped)
 }
 void *ipc_win_accept(const char *path, bool overlapped)
 {
-	HANDLE h = CreateNamedPipeA(path,
+	HANDLE h = CreateNamedPipeA(
+		path,
 		PIPE_ACCESS_DUPLEX | (overlapped ? FILE_FLAG_OVERLAPPED : 0),
-		PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
-		PIPE_UNLIMITED_INSTANCES,
-		4096,
-		4096,
+		PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT |
+			PIPE_REJECT_REMOTE_CLIENTS,
+		PIPE_UNLIMITED_INSTANCES, 4096, 4096,
 		0, // default timeout
 		NULL); // default security
-	
+
 	if (h == INVALID_HANDLE_VALUE) {
 		return INVALID_HANDLE_VALUE;
 	}
@@ -79,7 +80,7 @@ int ipc_append_handle(void *pipe, char *buf, int sz, void *handle)
 	ULONG pid;
 	BOOL ok = (flags & PIPE_SERVER_END) ?
 			  GetNamedPipeClientProcessId(pipe, &pid) :
-				GetNamedPipeServerProcessId(pipe, &pid);
+			  GetNamedPipeServerProcessId(pipe, &pid);
 	if (!ok) {
 		return -1;
 	}
@@ -89,9 +90,8 @@ int ipc_append_handle(void *pipe, char *buf, int sz, void *handle)
 	}
 
 	void *newhandle;
-	if (!DuplicateHandle(GetCurrentProcess(), handle, process,
-			&newhandle, DUPLICATE_SAME_ACCESS, FALSE,
-			0)) {
+	if (!DuplicateHandle(GetCurrentProcess(), handle, process, &newhandle,
+			     DUPLICATE_SAME_ACCESS, FALSE, 0)) {
 		CloseHandle(process);
 		return -1;
 	}
@@ -103,3 +103,4 @@ int ipc_append_handle(void *pipe, char *buf, int sz, void *handle)
 	CloseHandle(process);
 	return ret;
 }
+#endif

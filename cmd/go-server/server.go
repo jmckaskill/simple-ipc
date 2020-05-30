@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/jmckaskill/simple-ipc/go/ipc"
+	"github.com/jmckaskill/simple-ipc/go-ipc"
 )
 
 func must(err error) {
