@@ -58,21 +58,19 @@ Each atom should be separated by a single space. Other whitespace must not be in
 * Bytes
 * Lists
 * Maps
-* Reference
 
 APIs should strictly define what atom types they support for a given argument. Atom types are not interchangeable unless the API supports so.
 
 All atom types are designed to have only a single encoding for a given value. This allows messages to be byte compared.
 
-| Type      | Regex                        |
-| --------- | ---------------------------- |
-| Boolean   | `T` or `F`                   |
-| Real      | `-?[0-9a-f]+(p-?[0-9a-f]+)?` |
-| String    | `[0-9a-f]+:.*`               |
-| Bytes     | `[0-9a-f]+|.*`               |
-| Reference | `[0-9a-f]+@`                 |
-| List      | `[` and `]`                  |
-| Map       | `{` and `}`                  |
+| Type    | Regex                        |
+| ------- | ---------------------------- |
+| Boolean | `T` or `F`                   |
+| Real    | `-?[0-9a-f]+(p-?[0-9a-f]+)?` |
+| String  | `[0-9a-f]+:.*`               |
+| Bytes   | `[0-9a-f]+|.*`               |
+| List    | `[` and `]`                  |
+| Map     | `{` and `}`                  |
 
 # Real
 

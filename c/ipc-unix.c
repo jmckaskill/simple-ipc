@@ -1,13 +1,14 @@
 #ifndef _WIN32
-#include "unix.h"
+#include "ipc-unix.h"
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/un.h>
+#include <sys/socket.h>
 
 #define SCM_MAX_FDS 255
 
-struct sockaddr *ipc_new_unix_addr(const char *path, socklen_t *psasz)
+struct sockaddr *ipc_new_unix_addr(const char *path, int *psasz)
 {
 	struct sockaddr_un *un;
 	size_t psz = strlen(path);
@@ -16,7 +17,7 @@ struct sockaddr *ipc_new_unix_addr(const char *path, socklen_t *psasz)
 	un->sun_family = AF_UNIX;
 	memcpy(un->sun_path, path, psz + 1);
 	*psasz = sasz;
-	return (struct sockaddr*)un;
+	return (struct sockaddr *)un;
 }
 
 int ipc_unix_connect(const char *path)
@@ -26,7 +27,7 @@ int ipc_unix_connect(const char *path)
 		return -1;
 	}
 
-	socklen_t sasz;
+	int sasz;
 	struct sockaddr *sa = ipc_new_unix_addr(path, &sasz);
 	int err = connect(fd, sa, sasz);
 	free(sa);
@@ -47,7 +48,7 @@ int ipc_unix_listen(const char *path)
 
 	unlink(path);
 
-	socklen_t sasz;
+	int sasz;
 	struct sockaddr *sa = ipc_new_unix_addr(path, &sasz);
 	int err = bind(fd, sa, sasz);
 	free(sa);
@@ -55,33 +56,18 @@ int ipc_unix_listen(const char *path)
 		close(fd);
 		return -1;
 	}
-	
+
 	return fd;
 }
 
-#if 0
- *        struct msghdr {
- *             void         *msg_name;       /* Optional address */
-               socklen_t     msg_namelen;    /* Size of address */
-               struct iovec *msg_iov;        /* Scatter/gather array */
-               size_t        msg_iovlen;     /* # elements in msg_iov */
-               void         *msg_control;    /* Ancillary data, see below */
-               size_t        msg_controllen; /* Ancillary data buffer len */
-               int           msg_flags;      /* Flags (unused) */
-          };
-
- *
- *
- */
-#endif
-
-int ipc_unix_sendmsg(int fd, const char *buf, int sz, const int *fds, int fdn) {
+int ipc_unix_sendmsg(int fd, const char *buf, int sz, const int *fds, int fdn)
+{
 	union {
 		struct cmsghdr hdr;
-		char buf[CMSG_SPACE(SCM_MAX_FDS*sizeof(int))];
+		char buf[CMSG_SPACE(SCM_MAX_FDS * sizeof(int))];
 	} control;
 	struct iovec iov = {
-		.iov_base = (char*)buf,
+		.iov_base = (char *)buf,
 		.iov_len = sz,
 	};
 	struct msghdr msg = {
@@ -92,22 +78,23 @@ int ipc_unix_sendmsg(int fd, const char *buf, int sz, const int *fds, int fdn) {
 	if (fdn > SCM_MAX_FDS) {
 		return -1;
 	} else if (fdn) {
-		msg.msg_controllen = CMSG_SPACE(fdn*sizeof(*fds));
+		msg.msg_controllen = CMSG_SPACE(fdn * sizeof(*fds));
 		msg.msg_control = control.buf;
 		struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg);
 		cmsg->cmsg_level = SOL_SOCKET;
 		cmsg->cmsg_type = SCM_RIGHTS;
-		cmsg->cmsg_len = CMSG_LEN(fdn*sizeof(*fds));
-		memcpy(CMSG_DATA(cmsg), fds, fdn*sizeof(*fds));
+		cmsg->cmsg_len = CMSG_LEN(fdn * sizeof(*fds));
+		memcpy(CMSG_DATA(cmsg), fds, fdn * sizeof(*fds));
 	}
 
-	return (int) sendmsg(fd, &msg, 0);
+	return (int)sendmsg(fd, &msg, 0);
 }
 
-int ipc_unix_recvmsg(int fd, char *buf, int sz, int *fds, int *fdn) {
+int ipc_unix_recvmsg(int fd, char *buf, int sz, int *fds, int *fdn)
+{
 	union {
 		struct cmsghdr hdr;
-		char buf[CMSG_SPACE(SCM_MAX_FDS*sizeof(int))];
+		char buf[CMSG_SPACE(SCM_MAX_FDS * sizeof(int))];
 	} control;
 	struct iovec iov = {
 		.iov_base = buf,
@@ -126,14 +113,13 @@ int ipc_unix_recvmsg(int fd, char *buf, int sz, int *fds, int *fdn) {
 	int r = recvmsg(fd, &msg, 0);
 	if (r >= 0 && fdn && *fdn) {
 		int n = 0;
-		for (struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg);
-			       	cmsg != NULL;
-			       	cmsg = CMSG_NXTHDR(&msg, cmsg)) {
+		for (struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg); cmsg != NULL;
+		     cmsg = CMSG_NXTHDR(&msg, cmsg)) {
 			if (cmsg->cmsg_level == SOL_SOCKET &&
-					cmsg->cmsg_type == SCM_RIGHTS) {
+			    cmsg->cmsg_type == SCM_RIGHTS) {
 				unsigned char *p = CMSG_DATA(cmsg);
 				unsigned char *e = p + cmsg->cmsg_len;
-				for (;p + sizeof(int) < e; p += sizeof(int)) {
+				for (; p + sizeof(int) < e; p += sizeof(int)) {
 					int fd;
 					memcpy(&fd, p, sizeof(fd));
 					if (fd > 0 && n < *fdn) {

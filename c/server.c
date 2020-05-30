@@ -8,6 +8,9 @@
 #include "tinycthread/source/tinycthread.h"
 #else
 #include <threads.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/socket.h>
 #endif
 
 static int handler_thread(void *arg)
@@ -46,7 +49,6 @@ static int handler_thread(void *arg)
 			WriteFile(handles[0], "done", 4, &read, NULL);
 			CloseHandle(handles[0]);
 		}
-
 	}
 	CloseHandle(pipe);
 #else
@@ -64,11 +66,13 @@ static int handler_thread(void *arg)
 				.tv_sec = 4,
 			};
 			thrd_sleep(&duration, NULL);
+			write(fds[0], "hello", 5);
 			close(fds[0]);
 		}
+		sipc_parser_t p;
 		if (sipc_init(&p, buf, r)) {
 			fprintf(stderr, "failed to parse message\n");
-			continue
+			continue;
 		}
 		print_message(&p);
 	}
@@ -87,8 +91,10 @@ int main()
 			continue;
 		}
 		thrd_t thread;
-		if (thrd_create(&thread, &handler_thread, pipe) != thrd_success) {
-			fprintf(stderr, "failed to create thread %d\n", GetLastError());
+		if (thrd_create(&thread, &handler_thread, pipe) !=
+		    thrd_success) {
+			fprintf(stderr, "failed to create thread %d\n",
+				GetLastError());
 			CloseHandle(pipe);
 			continue;
 		}

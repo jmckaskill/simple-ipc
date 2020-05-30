@@ -9,6 +9,8 @@
 #include <Windows.h>
 #else
 #include <unistd.h>
+#include <sys/types.h>
+#include <sys/socket.h>
 #endif
 
 static const char test[] =
@@ -49,7 +51,7 @@ int main(int argc, const char *argv[])
 	}
 	CloseHandle(write);
 	n += sipc_format(buf + n, sizeof(buf) - n, "R 3:cmd %d %f %f\n", -123,
-		    312132.1f, NAN);
+			 312132.1f, NAN);
 	fprintf(stderr, "sending %s\n", buf);
 	if (!WriteFile(pipe, buf, n, &written, NULL)) {
 		fprintf(stderr, "write failed%d\n", GetLastError());

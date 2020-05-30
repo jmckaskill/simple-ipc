@@ -44,7 +44,7 @@ struct sipc_any {
 		struct {
 			int n;
 			const unsigned char *p;
-		} bytes, reference;
+		} bytes;
 		sipc_parser_t array, map;
 	};
 	enum sipc_type type;
