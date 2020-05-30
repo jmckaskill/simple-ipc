@@ -43,6 +43,10 @@ func handler(c *net.UnixConn) error {
 			f.WriteString("hello from go")
 			f.Close()
 		}
+
+		if _, err := c.Write(buf[:n]); err != nil {
+			return err
+		}
 	}
 }
 

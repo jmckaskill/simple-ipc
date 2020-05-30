@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"math"
 	"math/big"
 	"os"
@@ -66,6 +67,8 @@ func decodeString(s string) (value, snext string, err error) {
 		s = snext
 	}
 }
+
+var connection io.ReadWriter
 
 func executor(s string) {
 	buf := []byte{'R'}
@@ -136,7 +139,20 @@ func executor(s string) {
 	}
 	if len(buf) > 1 {
 		buf = ipc.AppendEntryEnd(buf)
-		fmt.Printf("TX %q\n", buf)
+		if Verbose {
+			fmt.Printf("TX %q\n", buf)
+		}
+		connection.Write(buf)
+		buf := make([]byte, 4096)
+		n, err := connection.Read(buf)
+		if err != nil {
+			fmt.Printf("error on reading reply - %v\n", err)
+			panic(Exit(2))
+		}
+		buf = buf[:n]
+		if Verbose {
+			fmt.Printf("RX %q\n", buf)
+		}
 	}
 }
 
@@ -157,17 +173,17 @@ func main() {
 		os.Exit(2)
 	}
 
-	/*
-		sockpath := flag.Args()[0]
-		c, err := ipc.Dial(sockpath)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "failed to connect to %v: %v\n", sockpath, err)
-			os.Exit(3)
-		}
-		if Verbose {
-			fmt.Fprintf(os.Stdout, "connected to %v\n", sockpath)
-		}
-	*/
+	sockpath := flag.Args()[0]
+	c, err := ipc.Dial(sockpath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to connect to %v: %v\n", sockpath, err)
+		os.Exit(3)
+	}
+	defer c.Close()
+	if Verbose {
+		fmt.Fprintf(os.Stdout, "connected to %v\n", sockpath)
+	}
+	connection = c
 
 	prompt.New(executor, completer).Run()
 }
