@@ -1,3 +1,5 @@
+// +build !windows
+
 package ipc
 
 import (
@@ -14,10 +16,6 @@ import (
 type UnixConn interface {
 	ReadMsgUnix(b, oob []byte) (n, oobn, flags int, addr *net.UnixAddr, err error)
 	WriteMsgUnix(b, oob []byte, addr *net.UnixAddr) (n, oobn int, err error)
-}
-
-type File interface {
-	Fd() uintptr
 }
 
 var ErrShortWrite = errors.New("short write")

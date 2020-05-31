@@ -8,9 +8,10 @@ import (
 	"reflect"
 )
 
-type EntryType byte
+type EntryType int
 
 const (
+	EndOfMessage       EntryType = -1
 	RequestEntry       EntryType = 'R'
 	ErrorEntry         EntryType = 'E'
 	SuccessEntry       EntryType = 'S'

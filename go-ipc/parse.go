@@ -345,15 +345,13 @@ func NewParser(b []byte) (*Parser, error) {
 	return &Parser{b}, nil
 }
 
-func (p *Parser) Finished() bool {
-	return len(p.b) == 0
-}
+func (p *Parser) Len() int { return len(p.b) }
 
-func (p *Parser) NextEntry() (EntryType, error) {
+func (p *Parser) NextEntry() EntryType {
 	if len(p.b) == 0 {
-		return 0, io.EOF
+		return EndOfMessage
 	}
-	return EntryType(p.peek()), nil
+	return EntryType(p.peek())
 }
 
 func (p *Parser) ParseEntry() ([]interface{}, error) {

@@ -28,11 +28,10 @@ func TestParse(t *testing.T) {
 		t.Fatalf("unexpected error %v", err)
 	}
 	for idx, entry := range expect {
-		typ, err := p.NextEntry()
-		if err != nil {
-			t.Errorf("ERR %d getting entry type %v", idx, err)
-		} else if typ != entry.typ {
+		typ := p.NextEntry()
+		if typ != entry.typ {
 			t.Errorf("ERR %d, expected type %d, got %d", idx, entry.typ, typ)
+			break
 		} else {
 			t.Logf("OK %d, got expected type %d", idx, entry.typ)
 		}
