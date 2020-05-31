@@ -1,3 +1,4 @@
-.vscode
-.vs
-/build
+/bin
+/.vs
+/.ninja_deps
+/.ninja_log

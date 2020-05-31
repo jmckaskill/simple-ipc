@@ -50,7 +50,7 @@ static void do_format(const char *expect, const char *fmt, ...)
 	assert(n == strlen(expect) && !strcmp(expect, buf));
 }
 
-static double subnormal()
+static double subnormal(void)
 {
 	union {
 		uint64_t u;
@@ -60,7 +60,7 @@ static double subnormal()
 	return u.d;
 }
 
-static void test_format()
+static void test_format(void)
 {
 	// bool
 	do_format("T", "%o", true);
@@ -144,8 +144,11 @@ static void test_parse()
 	assert(p.next == p.end && !*p.next);
 }
 
-int main()
+int main(int argc, char *argv[])
 {
+	if (argc > 1) {
+		freopen(argv[1], "w", stderr);
+	}
 	test_hex();
 	test_format();
 	test_parse();

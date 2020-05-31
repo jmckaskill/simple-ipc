@@ -38,12 +38,12 @@ struct sipc_any {
 		uint64_t n;
 		double d;
 		struct {
-			int n;
 			const char *s;
+			int n;
 		} string;
 		struct {
-			int n;
 			const unsigned char *p;
+			int n;
 		} bytes;
 		sipc_parser_t array, map;
 	};

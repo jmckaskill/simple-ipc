@@ -5,7 +5,7 @@
 #include <string.h>
 
 #ifdef _MSC_VER
-#include "tinycthread/source/tinycthread.h"
+#include <tinycthread.h>
 #else
 #include <threads.h>
 #include <unistd.h>

@@ -1,0 +1,28 @@
+comment = cl /Od disable optimization
+comment = cl /Ox enable optimization
+comment = cl /GR- disable run time type information
+comment = cl /Z7 creates debug information in the exe
+comment = cl /MDd link to debug runtime DLL
+comment = cl /MT link to release static lib
+comment = cl /D_CRT_SECURE_NO_WARNINGS disable stupid warnings in the microsoft crt
+comment = cl /TC all files are c code
+comment = cl /Wall enable all warnings - only for internal code
+comment = cl /WX treat warnings as an error
+comment = cl /FS force synchronous PDB writes
+comment = cl /GL whole program optimization
+comment = link /DEBUG link debug information
+comment = link /LTCG link time code generation
+comment = link /OPT:REF eliminate non-referenced code
+comment = link /OPT:ICF fold redundent repeated code
+comment = link /WX treat warnings as errors
+comment = lib /LTCG link time code generation
+comment = lib /WX treat warnings as errors
+
+TGT = msvc64-release
+CFLAGS = /Ox /GR- /MT /D_CRT_SECURE_NO_WARNINGS /TC /FS /GL
+LINKFLAGS = /WX /LTCG /OPT:REF /OPT:ICF
+LIBFLAGS = /WX /LTCG
+
+include target-msvc.ninja
+
+

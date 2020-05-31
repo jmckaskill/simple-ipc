@@ -15,7 +15,7 @@ func must(err error) {
 
 func main() {
 	log.Printf("opening sock")
-	c, err := ipc.DialUnix(os.Args[1])
+	c, err := ipc.Dial(os.Args[1])
 	must(err)
 	log.Printf("sock opened")
 
@@ -23,7 +23,8 @@ func main() {
 	must(err)
 
 	log.Printf("sending msg %s", msg)
-	must(ipc.SendUnixMsg(c, msg, nil))
+	_, err = c.Write(msg)
+	must(err)
 
 	rp, wp, err := os.Pipe()
 	must(err)
@@ -31,7 +32,8 @@ func main() {
 	must(err)
 
 	log.Printf("sending msg %s with %v", msg, wp)
-	must(ipc.SendUnixMsg(c, msg, []ipc.File{wp}))
+	_, _, err = c.(ipc.FileConn).WriteFiles(msg, []ipc.File{wp})
+	must(err)
 	wp.Close()
 
 	log.Printf("start read")
@@ -39,5 +41,4 @@ func main() {
 	n, err := rp.Read(buf[:])
 	log.Printf("read finished %q %v", string(buf[:n]), err)
 	rp.Close()
-
 }

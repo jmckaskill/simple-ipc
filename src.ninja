@@ -1,0 +1,29 @@
+obj = bin/obj/$TGT
+bin = bin/$TGT
+INCLUDES = -I libsipc -I ext/tinycthread/source
+
+build $obj/c-client/client.o: cc cmd/c-client/client.c
+build $obj/c-server/server.o: cc cmd/c-server/server.c
+build $obj/libsipc/ipc.o: cc libsipc/ipc.c
+build $obj/libsipc/ipc-windows.o: cc libsipc/ipc-windows.c
+build $obj/libsipc/ipc-unix.o: cc libsipc/ipc-unix.c
+build $obj/libsipc/ipc_test.o: cc libsipc/ipc_test.c
+
+build $bin/libsipc.lib: lib $
+ $obj/libsipc/ipc.o $
+ $obj/libsipc/ipc-windows.o $
+ $obj/libsipc/ipc-unix.o $
+
+build $obj/tinycthread.o: cc ext/tinycthread/source/tinycthread.c
+build $bin/tinycthread.lib: lib $obj/tinycthread.o
+
+build $bin/ipc_test.exe: clink $obj/libsipc/ipc_test.o
+build $bin/c-client.exe: clink $obj/c-client/client.o $bin/libsipc.lib
+build $bin/c-server.exe: clink $obj/c-server/server.o $bin/libsipc.lib $bin/tinycthread.lib
+
+rule ipc_test
+ command = $in $out
+
+build $obj/ipc_test.out: ipc_test $bin/ipc_test.exe
+build $TGT/exe: phony $bin/c-client.exe $bin/c-server.exe
+build $TGT/test: phony $TGT/exe $obj/ipc_test.out

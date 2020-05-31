@@ -1,0 +1,32 @@
+comment = input CFLAGS
+comment = input LIBFLAGS
+comment = input LINKFLAGS
+
+rule cc
+ command = cl /showIncludes -c $in /Fo$out /nologo $CFLAGS $INCLUDES /W3 /WX
+ deps = msvc
+ description = CC $out
+
+rule ccdll
+ command = cl /showIncludes -c $in /Fo$out /nologo $CFLAGS $INCLUDES /W3 /WX
+ deps = msvc
+ description = CC $out
+
+rule extcc
+ command = cl /showIncludes -c $in /Fo$out /nologo $CFLAGS $EXT_INCLUDES 
+ deps = msvc
+ description = CC $out
+
+rule lib
+ command = lib $in /nologo -OUT:$out $LIBFLAGS
+ description = AR $out
+
+rule clinkdll
+ command = link /DLL /INCREMENTAL:no /nologo $in /out:$out.dll /implib:$out $LINKFLAGS
+ description = DLL $out
+
+rule clink
+ command = link $in /nologo /out:$out $LINKFLAGS
+ description = EXE $out
+
+include src.ninja
