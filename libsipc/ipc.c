@@ -10,7 +10,7 @@
 #include <assert.h>
 
 #ifdef _MSC_VER
-#pragma warning(disable:26451) // overzealous arithmetic overflow check
+#pragma warning(disable : 26451) // overzealous arithmetic overflow check
 #include <intrin.h>
 #pragma intrinsic(_BitScanForward64)
 #pragma intrinsic(_BitScanReverse64)
@@ -261,17 +261,21 @@ int sipc_uint64(sipc_parser_t *p, uint64_t *pv)
 int sipc_int(sipc_parser_t *p, int *pv)
 {
 	int64_t v;
-	int err = sipc_int64(p, &v);
+	if (sipc_int64(p, &v) || v < INT_MIN || v > INT_MAX) {
+		return -1;
+	}
 	*pv = (int)v;
-	return err || v < INT_MIN || v > INT_MAX;
+	return 0;
 }
 
 int sipc_uint(sipc_parser_t *p, unsigned *pv)
 {
 	uint64_t v;
-	int err = sipc_uint64(p, &v);
+	if (sipc_uint64(p, &v) || v > UINT_MAX) {
+		return -1;
+	}
 	*pv = (unsigned)v;
-	return err || v > UINT_MAX;
+	return 0;
 }
 
 static double build_double(int negate, uint64_t sig, int exp)
@@ -337,9 +341,11 @@ int sipc_double(sipc_parser_t *p, double *pv)
 int sipc_float(sipc_parser_t *p, float *pv)
 {
 	double d;
-	int err = sipc_double(p, &d);
+	if (sipc_double(p, &d)) {
+		return -1;
+	}
 	*pv = (float)d;
-	return err;
+	return 0;
 }
 
 static int parse_szstring(sipc_parser_t *p, char delim, int *psz,

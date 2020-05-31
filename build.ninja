@@ -1,3 +1,12 @@
 
 subninja target-msvc64-release.ninja
 subninja target-msvc64-debug.ninja
+subninja target-cc-debug.ninja
+subninja target-cc-release.ninja
+
+rule help
+ command = echo "choose one of" && ninja -t targets
+ description = HELP
+
+build help: help
+default help

@@ -1,0 +1,46 @@
+comment = input CFLAGS from target-cc-*.ninja
+comment = input LDFLAGS from target-cc-*.ninja
+comment = input INCLUDES from src.ninja
+comment = input EXT_INCLUDES from src.ninja
+
+comment = cc -MMD write out header dependencies
+comment = cc -MF file to write headers to
+comment = cc -c compile to object file
+comment = cc -o output file
+comment = cc -std=c11 compile to standard C11
+comment = cc -Wall enable all warnings
+comment = cc -Werror error on warning
+comment = cc -fPIC compile position independent code for shared objects
+
+rule cc
+ command = cc -MMD -MF $out.d -c $in -o $out -std=c11 -Wall -Werror $CFLAGS $INCLUDES
+ deps = gcc
+ depfile = $out.d
+ description = CC $in
+
+rule extcc
+ command = cc -MMD -MF $out.d -c $in -o $out -Wno-deprecated-declarations $CFLAGS $EXT_INCLUDES
+ deps = gcc
+ depfile = $out.d
+ description = CC $in
+
+rule ccdll
+ command = cc -MMD -MF $out.d -c $in -o $out -std=c11 -fPIC -Wall -Werror $CFLAGS $INCLUDES
+ deps = gcc
+ depfile = $out.d
+ description = CC $in
+
+rule lib
+ command = ar rcs $out $in
+ description = AR $out
+
+rule clinkdll
+ command = c++ $in -o $out -shared $LDFLAGS
+ description = AR $out
+
+rule clink
+ command = cc $in -o $out $LDFLAGS
+ description = EXE $out
+
+include src.ninja
+

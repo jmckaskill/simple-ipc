@@ -26,4 +26,4 @@ rule ipc_test
 
 build $obj/ipc_test.out: ipc_test $bin/ipc_test.exe
 build $TGT/exe: phony $bin/c-client.exe $bin/c-server.exe
-build $TGT/test: phony $TGT/exe $obj/ipc_test.out
+build $TGT/test: phony $obj/ipc_test.out

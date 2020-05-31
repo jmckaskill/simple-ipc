@@ -1,0 +1,9 @@
+
+comment = cc -O3 enable optimizations
+comment = ld -lpthread link pthread - needed for C11 threads
+comment = ld -lm link math library - part of libc
+
+TGT = cc-release
+CFLAGS = -O3
+LDFLAGS = -lpthread -lm
+include target-cc.ninja

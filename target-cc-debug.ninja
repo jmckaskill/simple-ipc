@@ -1,0 +1,10 @@
+
+comment = cc -Og optimize for debugging
+comment = cc -g include debug information
+comment = ld -lpthread link pthread - needed for C11 threads
+comment = ld -lm link math library - part of libc
+
+TGT = cc-debug
+CFLAGS = -Og -g
+LDFLAGS = -g -lpthread -lm
+include target-cc.ninja
