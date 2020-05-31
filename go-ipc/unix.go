@@ -5,7 +5,6 @@ package ipc
 import (
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"math/rand"
 	"net"
@@ -13,14 +12,13 @@ import (
 	"syscall"
 )
 
-type UnixConn interface {
-	ReadMsgUnix(b, oob []byte) (n, oobn, flags int, addr *net.UnixAddr, err error)
-	WriteMsgUnix(b, oob []byte, addr *net.UnixAddr) (n, oobn int, err error)
+type UnixConn struct {
+	*net.UnixConn
 }
 
 var ErrShortWrite = errors.New("short write")
 
-func SendUnixMsg(c UnixConn, msg []byte, files []File) error {
+func (c *UnixConn) WriteFiles(b []byte, files []File) (n, fn int, err error) {
 	var oob []byte
 
 	if len(files) > 0 {
@@ -31,47 +29,53 @@ func SendUnixMsg(c UnixConn, msg []byte, files []File) error {
 		oob = syscall.UnixRights(fds...)
 	}
 
-	n, oobn, err := c.WriteMsgUnix(msg, oob, nil)
+	n, oobn, err := c.WriteMsgUnix(b, oob, nil)
 	if err != nil {
-		return err
-	} else if n < len(msg) || oobn < len(oob) {
-		return ErrShortWrite
+		return 0, 0, err
+	} else if n < len(b) || oobn < len(oob) {
+		return 0, 0, ErrShortWrite
 	}
-	return nil
+	return len(b), len(files), nil
 }
 
-func ReadUnixMsg(c UnixConn, buf []byte) (int, []*os.File, error) {
+func (c *UnixConn) ReadFiles(buf []byte, files []*os.File) (n, fn int, err error) {
 	oob := [128]byte{}
 	n, oobn, _, _, err := c.ReadMsgUnix(buf, oob[:])
 	if err != nil {
-		return n, nil, err
+		return n, 0, err
 	}
-	var files []*os.File
+	fn = 0
 	if oobn > 0 {
 		cmsgs, err := syscall.ParseSocketControlMessage(oob[:oobn])
 		if err != nil {
-			return n, nil, err
+			return n, 0, err
 		}
 		for i := range cmsgs {
 			fds, err := syscall.ParseUnixRights(&cmsgs[i])
 			if err == nil {
 				for _, fd := range fds {
-					files = append(files, os.NewFile(uintptr(fd), ""))
+					if fn < len(files) {
+						files[fn] = os.NewFile(uintptr(fd), "")
+						fn++
+					} else {
+						syscall.Close(fd)
+					}
 				}
 			}
 		}
 	}
-	return n, files, nil
+	return n, fn, nil
 }
 
-func DialUnix(path string) (*net.UnixConn, error) {
-	return net.DialUnix("unixpacket", nil, &net.UnixAddr{
+func DialUnix(path string) (*UnixConn, error) {
+	c, err := net.DialUnix("unixpacket", nil, &net.UnixAddr{
 		Net:  "unixpacket",
 		Name: path,
 	})
+	return &UnixConn{c}, err
 }
 
-func Dial(path string) (io.ReadWriteCloser, error) {
+func Dial(path string) (*UnixConn, error) {
 	return DialUnix(path)
 }
 
@@ -81,6 +85,10 @@ func isAlreadyInUse(err error) bool {
 }
 
 var ErrConflict = errors.New("too much conflict on creating socket")
+
+func Listen(path string) (*net.UnixListener, error) {
+	return ListenUnix(path, true)
+}
 
 func ListenUnix(path string, overwrite bool) (*net.UnixListener, error) {
 	ln, err := net.ListenUnix("unixpacket", &net.UnixAddr{

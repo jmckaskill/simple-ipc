@@ -32,7 +32,7 @@ func main() {
 	must(err)
 
 	log.Printf("sending msg %s with %v", msg, wp)
-	_, _, err = c.(ipc.FileConn).WriteFiles(msg, []ipc.File{wp})
+	_, _, err = c.WriteFiles(msg, []ipc.File{wp})
 	must(err)
 	wp.Close()
 
